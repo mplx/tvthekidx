@@ -37,11 +37,14 @@ def create_connection(db_file):
         return conn
 
 
-def execute_sql(conn, sql):
+def execute_sql(conn, sql, param = None):
     #print(sql)
+    if param is None: 
+        param = []
+
     try:
         c = conn.cursor()
-        c.execute(sql)
+        c.execute(sql, param)
         conn.commit()
         return c
     except Error as e:
@@ -86,6 +89,10 @@ def query_movie(search, name, year):
         if len(results) == 0:
             return None
         else:
+            for m in results:
+                if m['title'] == name and int(m['release_date'][0:4]) == year:
+                    return m
+            #no exact match found
             return results[0]
     else:
         return results
@@ -93,13 +100,13 @@ def query_movie(search, name, year):
 
 def addFileToDb(db, filename, title, year, extension):
     selectSQL = "SELECT * FROM files WHERE filename = ?"
-    insertSQL = f"INSERT INTO files (filename, title, year) VALUES ('{filename}', '{title}', {year})"
-    cur = db.cursor()
-    result = cur.execute(selectSQL, (filename,))
+    insertSQL = "INSERT INTO files (filename, title, year) VALUES (?, ?, ?)"
+
+    cur = execute_sql(db, selectSQL, (filename, ))
     entry = cur.fetchone()
 
     if entry is None:
-        execute_sql(db, insertSQL)
+        result = execute_sql(db, insertSQL, (filename, title, year))
         db.commit()
 
 
@@ -108,7 +115,6 @@ def scanDir(db, scanPath):
     idx = 0
     verbose("Scanning for new files...")
     fn = scanPath + '/* ([0-9][0-9][0-9][0-9]).mp4'
-    verbose("Pattern: " + fn)
     movies = glob.glob(fn)
     for m in movies:
         idx = idx + 1
@@ -123,7 +129,7 @@ def scanDir(db, scanPath):
     " check if all database files exist "
     verbose("Scanning for obsolete files...")
     selectSQL = "SELECT id, filename FROM files ORDER BY filename ASC"
-    cur = execute_sql(db, selectSQL)
+    cur = execute_sql(db, selectSQL, ())
     for row in cur.fetchall():
         fn = scanPath + '/' + row['filename']
         if (not os.path.isfile(fn)):
@@ -149,9 +155,8 @@ def fetchPoster(posterPath):
 def lookupMovie(db, title, year):
     verbose("Lookup... " + title)
     cur = db.cursor()
-    selectSQL = f"SELECT id FROM movies WHERE title='{title}' AND year={year}"
-    #verbose(selectSQL)
-    cur.execute(selectSQL)
+    selectSQL = f"SELECT id FROM movies WHERE title=? AND year=?"
+    cur = execute_sql(db, selectSQL, (title, year))
     entry = cur.fetchone()
     if entry is None:
         result = query_movie(search, title, year)
