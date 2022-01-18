@@ -19,8 +19,7 @@ def create_connection(db_file):
         return conn
 
 
-def writeHeader(f):
-    title = "TVThek Index: Filme"
+def writeHeader(f, title = "TVThek Index"):
     now = datetime.datetime.now()
     f.write('<html lang="de">')
     f.write('<header>')
@@ -46,7 +45,7 @@ def writeFooter(f):
 
 def getMovies(db, orderby):
     cur = db.cursor()
-    selectSQL = f"SELECT m.*, f.filename FROM movies m LEFT JOIN files f ON m.id=f.movie_id ORDER BY {orderby}"
+    selectSQL = f"SELECT m.*, f.filename FROM movies m JOIN files f ON m.id=f.movie_id ORDER BY {orderby}"
     cur.execute(selectSQL)
     return cur.fetchall()
 
@@ -126,12 +125,13 @@ def writeMoviesDetail(db, f):
 
 if __name__ == '__main__':
 
+    title = "TVThek Index"
     databaseFile = "tvthek.db"
     outputFile = '_index.html'
-    clihelp = sys.argv[0] + ' -v -d <dbfile> -o <outputfile>'
+    clihelp = sys.argv[0] + ' -v -t <title> -d <dbfile> -o <outputfile>'
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hvd:o:", ["db=","ofile="])
+        opts, args = getopt.getopt(sys.argv[1:], "hvt:d:o:", ["db=","ofile="])
     except getopt.GetoptError:
         print(clihelp)
         sys.exit(2)
@@ -141,6 +141,8 @@ if __name__ == '__main__':
             sys.exit()
         elif opt == '-v':
             verboseSetting = True
+        elif opt == '-t':
+            title = arg
         elif opt in ("-d", "--db"):
             databaseFile = arg
         elif opt in ("-o", "--ofile"):
@@ -149,7 +151,7 @@ if __name__ == '__main__':
 
     db = create_connection(databaseFile)
     with open(outputFile, 'w') as f:
-        writeHeader(f)
+        writeHeader(f, title)
         writeMoviesImageTitle(db, f)
         writeMoviesDetail(db, f)
         writeFooter(f)
