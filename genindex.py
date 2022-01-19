@@ -18,13 +18,17 @@ from tmdbv3api import TMDb
 from tmdbv3api import Movie
 from tmdbv3api import Search
 
-verboseSetting = False
 
-def verbose(text):
-    global verboseSetting
+VERBOSITY_LEVEL = 1
+UNKNOWN_IGNORE = True
 
-    if verboseSetting:
+
+def verbose(text, level = 1):
+    global VERBOSITY_LEVEL
+
+    if VERBOSITY_LEVEL >= level:
         print(text)
+
 
 def create_connection(db_file):
     conn = None
@@ -38,7 +42,6 @@ def create_connection(db_file):
 
 
 def execute_sql(conn, sql, param = None):
-    #print(sql)
     if param is None: 
         param = []
 
@@ -62,8 +65,18 @@ def cleanup_db(conn):
 
 
 def initialize_db(db_file):
-    conn = create_connection(db_file)
-    #create_table(conn, "SQL")
+    createMode = not(os.path.isfile(db_file))
+    if createMode:
+        verbose("Creating database...", 2)
+        conn = create_connection(db_file)
+        SQL = 'CREATE TABLE "files" ("id" INTEGER, "filename" TEXT NOT NULL UNIQUE, "movie_id" INTEGER DEFAULT NULL, "title" TEXT, "year" INTEGER, PRIMARY KEY("id" AUTOINCREMENT))'
+        result = execute_sql(conn, SQL)
+        SQL = 'CREATE TABLE "movies" ("id" INTEGER NOT NULL, "title" TEXT NOT NULL, "title_orig" TEXT NOT NULL, "year" INTEGER NOT NULL, "description" TEXT, "popularity" REAL DEFAULT 0, "score" REAL DEFAULT 0, "poster" BLOB, "tmdb_id" INTEGER, PRIMARY KEY("id" AUTOINCREMENT) )'
+        result = execute_sql(conn, SQL)
+    else:
+        verbose("Connecting database...", 2)
+        conn = create_connection(db_file)
+
     return conn
 
 
@@ -82,7 +95,7 @@ def initialize_tmdb(apikey):
 
 def query_movie(search, name, year):
     #results = query_movie(search, 'Die fabelhafte Welt der Amélie', 2001)
-    verbose(f'Querying movie online: {name} {year}')
+    verbose(f'Querying movie online: {name} {year}', 2)
     query = {"language": "de", "query": name, "year": year}
     results = search.movies(query)
     if isinstance(results, list):
@@ -110,10 +123,16 @@ def addFileToDb(db, filename, title, year, extension):
         db.commit()
 
 
+def addMovieToDb(db, movie):
+    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, year, description, popularity, score, poster) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    result =  execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster']))
+    return result.lastrowid
+
+
 def scanDir(db, scanPath):
     " scan all files found "
     idx = 0
-    verbose("Scanning for new files...")
+    verbose("Scanning for new files...", 2)
     fn = scanPath + '/* ([0-9][0-9][0-9][0-9]).mp4'
     movies = glob.glob(fn)
     for m in movies:
@@ -127,7 +146,7 @@ def scanDir(db, scanPath):
     verbose(f"{idx} files found")
 
     " check if all database files exist "
-    verbose("Scanning for obsolete files...")
+    verbose("Scanning for obsolete files...", 2)
     selectSQL = "SELECT id, filename FROM files ORDER BY filename ASC"
     cur = execute_sql(db, selectSQL, ())
     for row in cur.fetchall():
@@ -153,7 +172,7 @@ def fetchPoster(posterPath):
 
 
 def lookupMovie(db, title, year):
-    verbose("Lookup... " + title)
+    verbose("Lookup... " + title, 2)
     cur = db.cursor()
     selectSQL = f"SELECT id FROM movies WHERE title=? AND year=?"
     cur = execute_sql(db, selectSQL, (title, year))
@@ -161,20 +180,31 @@ def lookupMovie(db, title, year):
     if entry is None:
         result = query_movie(search, title, year)
         if result is not None:
-            tmdb_id = result['id']
-            title = result['title']
-            orig_title = result['original_title']
-            release_year = result['release_date'][0:4]
-            description = result['overview']
-            popularity = result['popularity'] # https://developers.themoviedb.org/3/getting-started/popularity
-            score = result['vote_average'] * 10
-            poster = fetchPoster(result['poster_path'])
-            insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, year, description, popularity, score, poster) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            result = cur.execute(insertSQL, (tmdb_id, title, orig_title, release_year, description, popularity, score, poster))
-            db.commit()
-            return cur.lastrowid
+                movie = {
+                    "tmdb_id": result['id'],
+                    "title": result['title'],
+                    "orig_title": result['original_title'],
+                    "release_year": result['release_date'][0:4],
+                    "description": result['overview'] if result['overview'] else None,
+                    "popularity": result['popularity'], # https://developers.themoviedb.org/3/getting-started/popularity
+                    "score": result['vote_average'] * 10,
+                    "poster": fetchPoster(result['poster_path']),
+                }
+                return addMovieToDb(db, movie)
         else:
-            print("Cannot find online:" + title)
+            verbose("Cannot find online: " + title, 1)
+            if not UNKNOWN_IGNORE:
+                unknown = {
+                    "tmdb_id": None,
+                    "title": title,
+                    "orig_title": title,
+                    "release_year": year,
+                    "description": None,
+                    "popularity": "0",
+                    "score": "0",
+                    "poster": None,
+                }
+                return addMovieToDb(db, unknown)
     else:
         return entry['id']
 
@@ -204,16 +234,18 @@ if __name__ == '__main__':
     libType = None
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hvd:p:t:k:", ["db=","path=","type=",'key='])
+        opts, args = getopt.getopt(sys.argv[1:], "hqvd:p:t:k:a", ["db=","path=","type=",'key=', 'add-unknown='])
     except getopt.GetoptError:
-        print(clihelp)
+        verbose(clihelp, 0)
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
             print(clihelp)
             sys.exit()
+        elif opt == '-q':
+            VERBOSITY_LEVEL = 0
         elif opt == '-v':
-            verboseSetting = True
+            VERBOSITY_LEVEL = VERBOSITY_LEVEL + 1
         elif opt in ("-d", "--db"):
             dbfile = arg
         elif opt in ("-p", "--path"):
@@ -222,11 +254,14 @@ if __name__ == '__main__':
             libType = arg
         elif opt in ("-k", "--key"):
             tmdbApiKey = arg
+        elif opt in ("-a", "--add-unknown"):
+            UNKNOWN_IGNORE = False
 
     if tmdbApiKey is None or dbfile is None or libPath is None or libType is None or libType != "movies":
         print("Usage: " + clihelp)
         sys.exit(2)
 
+    verbose("Verbosity level: " + str(VERBOSITY_LEVEL), 2)
     db = initialize_db(dbfile)
     movie, search = initialize_tmdb(tmdbApiKey)
     scanDir(db, libPath)

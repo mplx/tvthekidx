@@ -19,6 +19,19 @@ def create_connection(db_file):
         return conn
 
 
+def getMovies(db, where = None, orderby = None, limit = None):
+    cur = db.cursor()
+    selectSQL = "SELECT m.*, f.filename FROM movies m JOIN files f ON m.id=f.movie_id"
+    if where:
+        selectSQL = f"{selectSQL} WHERE {where}"
+    if orderby:
+        selectSQL = f"{selectSQL} ORDER BY {orderby}"
+    if limit:
+        selectSQL = f"{selectSQL} LIMIT {limit}"
+    cur.execute(selectSQL)
+    return cur.fetchall()
+
+
 def writeHeader(f, title = "TVThek Index"):
     now = datetime.datetime.now()
     f.write('<html lang="de">')
@@ -43,16 +56,11 @@ def writeFooter(f):
     f.write('</html>')
 
 
-def getMovies(db, orderby):
-    cur = db.cursor()
-    selectSQL = f"SELECT m.*, f.filename FROM movies m JOIN files f ON m.id=f.movie_id ORDER BY {orderby}"
-    cur.execute(selectSQL)
-    return cur.fetchall()
-
-
 def writeMoviesImageTitle(db, f):
-    orderby = "score DESC, year DESC, m.title ASC"
-    movies = getMovies(db, orderby + ' LIMIT 0,24')
+    orderBy = "score DESC, year DESC, m.title COLLATE NOCASE ASC"
+    posterRequired = "NOT (poster IS NULL)"
+
+    movies = getMovies(db, posterRequired, orderBy, "0,24")
     f.write('<section id="img1">\n')
     for m in movies:
         id = m['id']
@@ -61,11 +69,13 @@ def writeMoviesImageTitle(db, f):
         score = int(m['score'])
         if m['poster']:
             poster = base64.b64encode(m['poster']).decode('ascii')
-            posterhtml = f"<a href=\"#movie-{id}\"><img width=\"105\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
-            f.write(f'{posterhtml}')
+        else:
+            poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
+        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"105\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
+        f.write(f'{posterhtml}')
     f.write('\n</section>\n')
 
-    movies = getMovies(db, orderby + ' LIMIT 24,126')
+    movies = getMovies(db, posterRequired, orderBy, "24,126")
     f.write('<section id="img2">\n')
     for m in movies:
         id = m['id']
@@ -74,16 +84,17 @@ def writeMoviesImageTitle(db, f):
         score = int(m['score'])
         if m['poster']:
             poster = base64.b64encode(m['poster']).decode('ascii')
-            posterhtml = f"<a href=\"#movie-{id}\"><img width=\"60\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
-            f.write(f'{posterhtml}')
+        else:
+            poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
+        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"60\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
+        f.write(f'{posterhtml}')
     f.write('\n</section>\n')
 
 
 def writeMoviesDetail(db, f):
-    orderby = "m.title ASC, year ASC"
     idx = 0
     lastyear = 0
-    movies = getMovies(db, orderby)
+    movies = getMovies(db, None, "m.title  COLLATE NOCASE ASC, year ASC", None)
     f.write('<section id="movies">')
     for m in movies:
         id = m['id']
@@ -91,12 +102,14 @@ def writeMoviesDetail(db, f):
         title_orig = m['title_orig']
         filename = m['filename']
         filenamelink = f"<a href=\"{filename}\">{filename}</a>"
-        description = m['description']
+        description = m['description'] if m['description'] else ""
         year = m['year']
         tmdbid = m['tmdb_id']
         score = int(m['score'])
         scorecolor = "secondary"
-        if score<50:
+        if score==0:
+            scorecolor='warning'
+        elif score<50:
             scorecolor='danger'
         elif score>=70:
             scorecolor='success'
@@ -104,6 +117,8 @@ def writeMoviesDetail(db, f):
         if m['poster']:
             poster = base64.b64encode(m['poster']).decode('ascii')
             posterhtml = f"<a href=\"https://www.themoviedb.org/movie/{tmdbid}\"><img title=\"{title}\" src=\"data:image/png;base64,{poster}\" /></a>"
+        else:
+            posterhtml = "&nbsp;"
         titleext = ""
         if m["title_orig"] != m['title']:
             titleext = f" <span class='origtitle'>{title_orig}</span>"
