@@ -56,35 +56,74 @@ def execute_sql(conn, sql, param = None):
 
 def cleanup_db(conn):
     verbose("Database cleanup...", 2)
-    SQL = "DELETE FROM movies WHERE tmdb_id in (SELECT tmdb_id FROM movies GROUP BY tmdb_id HAVING COUNT(*)>1)"
-    result = execute_sql(conn, SQL)
-    SQL = "DELETE FROM files WHERE movie_id NOT IN (SELECT id FROM movies)"
-    result = execute_sql(conn, SQL)
+
+    verbose("Removing duplicate movies...", 3)
+    SQL = "SELECT tmdb_id FROM movies WHERE tmdb_id IS NOT NULL GROUP BY tmdb_id HAVING COUNT(*)>1 ORDER BY tmdb_id"
+    cur = execute_sql(db, SQL)
+    entries = cur.fetchall()
+    for e in entries:
+        tmdbid = e['tmdb_id']
+        SQL = "SELECT id FROM movies WHERE tmdb_id = ?"
+        cur = execute_sql(db, SQL, (tmdbid, ))
+        entry = cur.fetchone()
+        master = entry['id']
+        obsolete = cur.fetchall()
+        for o in obsolete:
+            actorsUpdateSQL = "UPDATE actors_movies SET m_id = ? WHERE m_id = ?"
+            actorsDeleteSQL = "DELETE FROM actors_movies WHERE m_id = ?"
+            filesUpdateSQL  = "UPDATE files SET movie_id = ? WHERE movie_id = ?"
+            cleanupSQL = "DELETE FROM movies WHERE id = ?"
+            try:
+                c = db.cursor()
+                c.execute(actorsUpdateSQL, (master, o['id']))
+            except Error as e:
+                cur = execute_sql(db, actorsDeleteSQL, (o['id'], ))
+            cur = execute_sql(db, filesUpdateSQL, (master, o['id']))
+            cur = execute_sql(db, cleanupSQL, (o['id'], ))
 
     verbose("Optimizing database...", 2)
     conn.commit()
     SQL = "VACUUM"
-    result = execute_sql(conn, SQL)
+    #result = execute_sql(conn, SQL)
 
     return True
 
 
 def initialize_db(db_file):
     createMode = not(os.path.isfile(db_file))
+
     if createMode:
         verbose("Creating database...", 2)
         conn = create_connection(db_file)
+
+        verbose("Creating table movies...", 3)
         SQL = 'CREATE TABLE "movies" ("id" INTEGER NOT NULL, "title" TEXT NOT NULL, "title_orig" TEXT NOT NULL, "year" INTEGER NOT NULL, "description" TEXT, "popularity" REAL DEFAULT 0, "score" REAL DEFAULT 0, "poster" BLOB, "tmdb_id" INTEGER, PRIMARY KEY("id" AUTOINCREMENT) )'
         result = execute_sql(conn, SQL)
-        SQL = 'CREATE TABLE "files" ("id" INTEGER, "filename" TEXT NOT NULL UNIQUE, "movie_id" INTEGER DEFAULT NULL, "title" TEXT, "year" INTEGER, PRIMARY KEY("id" AUTOINCREMENT), FOREIGN KEY(movie_id) REFERENCES movies(id))'
+        #SQL = 'INSERT INTO movies("id","title","title_orig","year","description","poster","tmdb_id") VALUES (0,\'\',\'\',0,NULL,NULL,NULL)'
+        #result = execute_sql(conn, SQL)
+
+        verbose("Creating table files...", 3)
+        SQL = 'CREATE TABLE "files" ("id" INTEGER, "collection" TEXT DEFAULT NULL, "filename" TEXT NOT NULL, "relpath" TEXT DEFAULT NULL, "size" INTEGER DEFAULT NULL, "ctime" INTEGER DEFAULT NULL, "mtime" INTEGER DEFAULT NULL, "movie_id" INTEGER, "added" INTEGER default (cast(strftime(\'%s\',\'now\') as int)), "lastmod" INTEGER default (cast(strftime(\'%s\',\'now\') as int)), PRIMARY KEY("id" AUTOINCREMENT), FOREIGN KEY("movie_id") REFERENCES"movies"("id"))'
         result = execute_sql(conn, SQL)
+
+        verbose("Creating table actors...", 3)
         SQL = 'CREATE TABLE "actors" ("id" INTEGER, "name" TEXT NOT NULL, "popularity" REAL, "profile" BLOB, "tmdb_id" INTEGER NOT NULL UNIQUE, PRIMARY KEY("id" AUTOINCREMENT))'
         result = execute_sql(conn, SQL)
+
+        verbose("Creating table actors/movies...", 3)
         SQL = 'CREATE TABLE "actors_movies" ("a_id" INTEGER NOT NULL, "m_id" INTEGER NOT NULL, FOREIGN KEY("m_id") REFERENCES "movies"("id"), FOREIGN KEY("a_id") REFERENCES "actors"("id"), PRIMARY KEY("a_id","m_id"))'
         result = execute_sql(conn, SQL)
+
+        verbose("Creating table indices...", 3)
+        SQL = 'CREATE UNIQUE INDEX "unique_fn" ON "files" ("collection" ASC, "filename" ASC, "relpath" ASC)'
+        result = execute_sql(conn, SQL)
+
     else:
         verbose("Connecting database...", 2)
         conn = create_connection(db_file)
+
+    SQL = "PRAGMA foreign_keys = ON"
+    result = execute_sql(conn, SQL)
 
     return conn
 
@@ -150,16 +189,37 @@ def query_movie(search, name, year):
         return results
 
 
-def addFileToDb(db, filename, title, year, extension):
-    selectSQL = "SELECT * FROM files WHERE filename = ?"
-    insertSQL = "INSERT INTO files (filename, title, year) VALUES (?, ?, ?)"
-
-    cur = execute_sql(db, selectSQL, (filename, ))
+def addFileToDb(db, collection, filename, relpath):
+    insertSQL = "INSERT INTO files (collection, filename, relpath, movie_id) VALUES (?, ?, ?, NULL)"
+    selectSQL = "SELECT * FROM files WHERE collection=? AND filename = ? AND relpath = ?"
+    cur = execute_sql(db, selectSQL, (collection, filename, relpath))
     entry = cur.fetchone()
-
     if entry is None:
-        result = execute_sql(db, insertSQL, (filename, title, year))
-        #db.commit()
+        #print(insertSQL, collection, filename)
+        result = execute_sql(db, insertSQL, (collection, filename, relpath))
+
+
+def updateFileMeta(db, filename, attributes):
+    selectSQL = "SELECT * FROM files WHERE collection=? AND filename = ?"
+    cur = execute_sql(db, selectSQL, (attributes['collection'], filename))
+    entry = cur.fetchone()
+    if entry is None:
+        return False
+    else:
+        parameters = []
+        updateSQL = "UPDATE FILES SET "
+        for attr in ('size', 'ctime', 'mtime'):            
+            if attributes[attr] != entry[attr]:
+                updateSQL = updateSQL + attr + " = ?, "
+                parameters.append(attributes[attr])
+        updateSQL = updateSQL + "lastmod=(cast(strftime('%s','now') as int)) WHERE filename = ? AND collection = ?"
+        if len(parameters) > 0:
+            parameters.append(filename)
+            parameters.append(attributes['collection'])
+            result = execute_sql(db, updateSQL, parameters)
+            return result
+        else:
+            return False
 
 
 def addMovieToDb(db, movie):
@@ -195,30 +255,47 @@ def addActorToMovieDb(db, mid, aid):
     return True
 
 
-def scanDir(db, scanPath):
+def scanDir(db, collection, rootDir, recursiveSearch = False):
     " scan all files found "
     idx = 0
     verbose("Scanning for new files...", 2)
-    fn = scanPath + '/* ([0-9][0-9][0-9][0-9]).mp4'
-    movies = glob.glob(fn)
+
+    scanPath = os.path.join(rootDir, '')
+    if recursiveSearch:
+        scanPath = scanPath + '**/'
+    fn = scanPath + '* ([0-9][0-9][0-9][0-9])*.'
+    movies = glob.glob(fn + 'mp4', recursive = recursiveSearch)
+    for ext in ('avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpg'):
+        movies.extend(glob.glob(fn + ext, recursive = recursiveSearch))
+
     for m in movies:
         idx = idx + 1
         f = os.path.basename(m)
-        m = re.search('(.*) \(([0-9][0-9][0-9][0-9])\)\.(mp4)', f)
-        basename = m.group(1)
-        year = m.group(2)
-        ext = m.group(3)
-        result = addFileToDb(db, f, basename, year, ext)
+        absPath = os.path.dirname(m)
+        relPath = os.path.relpath(absPath, rootDir)
+        size = os.path.getsize(m)
+        ctime = os.path.getctime(m)
+        mtime = os.path.getmtime(m)
+        result = addFileToDb(db, collection, f, relPath)
+        result = updateFileMeta(db, f, { "collection": collection, "size": size, "ctime": ctime, "mtime": mtime })
     verbose(f"{idx} files found")
 
     " check if all database files exist "
     verbose("Scanning for obsolete files...", 2)
-    selectSQL = "SELECT id, filename FROM files ORDER BY filename ASC"
+    selectSQL = "SELECT id, filename, relpath FROM files"
+    if collection:
+        selectSQL = selectSQL + f" WHERE collection='{collection}'"
+    selectSQL = selectSQL + " ORDER BY relpath ASC, filename ASC"
     cur = execute_sql(db, selectSQL, ())
     for row in cur.fetchall():
-        fn = scanPath + '/' + row['filename']
+        fn = rootDir + '/'
+        if row['relpath']:
+            fn = fn + row['relpath'] + '/'
+        fn = fn + row['filename']
+
         if (not os.path.isfile(fn)):
             deleteSQL = f"DELETE FROM files WHERE id = {row['id']}"
+            #print(deleteSQL, fn)
             result = execute_sql(db, deleteSQL)
 
     " finish "
@@ -284,12 +361,15 @@ def assignMovieToFile(db, fid, mid):
 
 
 def scanMovies(db, search):
-    selectSQL = "SELECT id, title, year FROM files WHERE movie_id IS NULL ORDER BY filename ASC"
+    selectSQL = "SELECT id, filename FROM files WHERE (movie_id IS NULL or movie_id=0) ORDER BY filename ASC"
     cur = execute_sql(db, selectSQL)
     for row in cur.fetchall():
-        m_id = lookupMovie(db, row['title'], row['year'])
+        m = re.search('(.*) \(([0-9][0-9][0-9][0-9])\).+', row['filename'])
+        basename = m.group(1)
+        year = m.group(2)
+        m_id = lookupMovie(db, basename, year)
         result = assignMovieToFile(db, row['id'], m_id)
-    db.commit()
+        db.commit()
     return None
 
 
@@ -304,20 +384,22 @@ def scanActors(db, movie):
             #if actor['popularity'] >= 0:
             aid = addActorToDb(db, actor)
             result = addActorToMovieDb(db, row['id'], aid)
-    db.commit()
+        db.commit()
     return None
 
 
 if __name__ == '__main__':
 
-    clihelp = sys.argv[0] + ' -v -d <dbfile> -p <path> -t <type> -k <apikey>'
+    clihelp = sys.argv[0] + ' -v -d <dbfile> -c <collection> -p <path> -t <type> -k <apikey>'
     tmdbApiKey = None
     dbfile = None
     libPath = None
     libType = None
+    collection = None
+    recursiveSearch = False
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hqvd:p:t:k:a", ["db=","path=","type=",'key=', 'add-unknown='])
+        opts, args = getopt.getopt(sys.argv[1:], "hqvd:p:t:k:c:ar", [ "db=", "path=", "type=", 'key=', 'add-unknown=', "collection=" ])
     except getopt.GetoptError:
         verbose(clihelp, 0)
         sys.exit(2)
@@ -327,6 +409,8 @@ if __name__ == '__main__':
             sys.exit()
         elif opt == '-q':
             VERBOSITY_LEVEL = 0
+        elif opt == '-r':
+            recursiveSearch = True
         elif opt == '-v':
             VERBOSITY_LEVEL = VERBOSITY_LEVEL + 1
         elif opt in ("-d", "--db"):
@@ -337,17 +421,19 @@ if __name__ == '__main__':
             libType = arg
         elif opt in ("-k", "--key"):
             tmdbApiKey = arg
+        elif opt in ("-c", "--collection"):
+            collection = arg
         elif opt in ("-a", "--add-unknown"):
             UNKNOWN_IGNORE = False
 
-    if tmdbApiKey is None or dbfile is None or libPath is None or libType is None or libType != "movies":
+    if tmdbApiKey is None or dbfile is None or libPath is None or libType is None or libType != "movies" or collection is None:
         print("Usage: " + clihelp)
         sys.exit(2)
 
     verbose("Verbosity level: " + str(VERBOSITY_LEVEL), 2)
     db = initialize_db(dbfile)
     movie, search = initialize_tmdb(tmdbApiKey)
-    scanDir(db, libPath)
+    scanDir(db, collection, libPath, recursiveSearch)
     scanMovies(db, search)
     scanActors(db, movie)
     cleanup_db(db)

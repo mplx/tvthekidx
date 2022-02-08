@@ -21,7 +21,7 @@ def create_connection(db_file):
 
 def getMovies(db, where = None, orderby = None, limit = None):
     cur = db.cursor()
-    selectSQL = "SELECT m.*, f.filename FROM movies m JOIN files f ON m.id=f.movie_id"
+    selectSQL = "SELECT DISTINCT m.* FROM movies m JOIN files f ON m.id=f.movie_id"
     if where:
         selectSQL = f"{selectSQL} WHERE {where}"
     if orderby:
@@ -32,9 +32,13 @@ def getMovies(db, where = None, orderby = None, limit = None):
     return cur.fetchall()
 
 
-def getActors(db):
+def getActors(db, where = None, orderby = "popularity DESC, name ASC"):
     cur = db.cursor()
-    selectSQL = "SELECT * FROM actors ORDER BY popularity DESC, name ASC"
+    selectSQL = "SELECT DISTINCT a.* FROM actors a"
+    if where:
+        selectSQL = f"{selectSQL} JOIN actors_movies am ON am.a_id=a.id JOIN movies m ON am.m_id=m.id JOIN files f ON f.movie_id = m.id WHERE {where}"
+    if orderby:
+        selectSQL = f"{selectSQL} ORDER BY {orderby}"    
     cur.execute(selectSQL)
     return cur.fetchall()
 
@@ -44,6 +48,13 @@ def getCast(db, mid, limit = None):
     selectSQL = "SELECT a.* FROM actors_movies c JOIN actors a ON c.a_id = a.id JOIN movies m ON c.m_id = m.id WHERE m.id = ? ORDER BY a.popularity DESC"
     if limit:
         selectSQL = f"{selectSQL} LIMIT {limit}"
+    cur.execute(selectSQL, (mid, ))
+    return cur.fetchall()
+
+
+def getCollections(db, mid):
+    cur = db.cursor()
+    selectSQL = "SELECT DISTINCT collection, filename FROM files WHERE movie_id = ? ORDER BY collection ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
 
@@ -80,11 +91,16 @@ def writeFooter(f):
     f.write('</html>')
 
 
-def writeMoviesImageTitle(db, f):
+def writeMoviesImageTitle(db, f, collection):
     orderBy = "score DESC, year DESC, m.title COLLATE NOCASE ASC"
-    posterRequired = "NOT (poster IS NULL)"
+    whereSql = "NOT (poster IS NULL)"
+    if collection:
+        whereSql = whereSql + " AND ("
+        for col in collection:
+            whereSql = whereSql + f"(collection='{col}') OR "
+        whereSql = whereSql[0:-4] + ")"
 
-    movies = getMovies(db, posterRequired, orderBy, "0,24")
+    movies = getMovies(db, whereSql, orderBy, "0,24")
     f.write('<section id="img1">\n')
     for m in movies:
         id = m['id']
@@ -99,7 +115,7 @@ def writeMoviesImageTitle(db, f):
         f.write(f'{posterhtml}')
     f.write('\n</section>\n')
 
-    movies = getMovies(db, posterRequired, orderBy, "24,126")
+    movies = getMovies(db, whereSql, orderBy, "24,126")
     f.write('<section id="img2">\n')
     for m in movies:
         id = m['id']
@@ -126,17 +142,22 @@ def movieRatingColor(score):
     return scorecolor
 
 
-def writeMoviesDetail(db, f):
+def writeMoviesDetail(db, f, collection):
     idx = 0
     lastyear = 0
-    movies = getMovies(db, None, "m.title COLLATE NOCASE ASC, year ASC", None)
+    whereSql = ""
+    if collection:
+        whereSql = whereSql + "("
+        for col in collection:
+            whereSql = whereSql + f"(collection='{col}') OR "
+        whereSql = whereSql[0:-4] + ")"
+    
+    movies = getMovies(db, whereSql, "m.title COLLATE NOCASE ASC, year ASC", None)
     f.write('<section id="movies">')
     for m in movies:
         id = m['id']
         title = m['title']
         title_orig = m['title_orig']
-        filename = m['filename']
-        filenamelink = f"<a href=\"{filename}\">{filename}</a>"
         description = m['description'] if m['description'] else ""
         if len(description) > 800:
             description = description[0:800] + "[...]"
@@ -156,6 +177,14 @@ def writeMoviesDetail(db, f):
         cast = getCast(db, id, "0,15")
         for actor in cast:
             actors = actors + '<a href="#actor-' + str(actor['id']) + '" title="' + str(int(actor['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + actor['name']+ '</a> '
+        collectionstr = ""
+        collections = getCollections(db, id)
+        for col in collections:
+            if col['collection'] is None:
+                colstr = "k.A."
+            else:
+                colstr = col['collection']
+            collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
         f.write(f"""            
                 <div class="row row-striped p-3" id="movie-{id}" data-search='["{title}"]'>
                     <div class="col"><h3>{title}</h3>{titleext}</div>
@@ -164,7 +193,7 @@ def writeMoviesDetail(db, f):
                         <dl>
                             <dt>Jahr</dt><dd><span class="badge bg-secondary">{year}</span></dd>
                             <dt>Wertung</dt><dd><span class="badge bg-{scorecolor}">{score}</span></dd>
-                            <dt>Datei</dt><dd>{filenamelink}</dd>
+                            <dt>Kollektionen</dt><dd>{collectionstr}</dd>
                         </dl>
                     </div>
                     <div class="col-6"><div class="description"><p>{description}</p><p>{actors}</p></div></div>
@@ -184,8 +213,16 @@ def actorListedChoice(mcnt = 0, popularity = 0):
     return False
 
 
-def writeActorsDetail(db, f):
-    actors = getActors(db)
+def writeActorsDetail(db, f, collection):
+    whereSql = ""
+    if collection:
+        whereSql = whereSql + "("
+        for col in collection:
+            whereSql = whereSql + f"(collection='{col}') OR "
+        whereSql = whereSql[0:-4] + ")"
+
+    actors = getActors(db, whereSql)
+
     f.write("<h3>Darsteller</h3>")
     f.write('<section id="actors">')
     i = 0
@@ -234,9 +271,10 @@ if __name__ == '__main__':
     databaseFile = "tvthek.db"
     outputFile = '_index.html'
     clihelp = sys.argv[0] + ' -v -t <title> -d <dbfile> -o <outputfile>'
+    collection = None
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hvt:d:o:", ["db=","ofile="])
+        opts, args = getopt.getopt(sys.argv[1:], "hvt:d:o:c:", [ "db=","ofile=","collection=" ])
     except getopt.GetoptError:
         print(clihelp)
         sys.exit(2)
@@ -252,12 +290,13 @@ if __name__ == '__main__':
             databaseFile = arg
         elif opt in ("-o", "--ofile"):
             outputFile = arg
-
+        elif opt in ("-c", "--collection"):
+            collection = arg.split(",")
 
     db = create_connection(databaseFile)
     with open(outputFile, 'w') as f:
         writeHeader(f, title)
-        writeMoviesImageTitle(db, f)
-        writeMoviesDetail(db, f)
-        writeActorsDetail(db, f)
+        writeMoviesImageTitle(db, f, collection)
+        writeMoviesDetail(db, f, collection)
+        writeActorsDetail(db, f, collection)
         writeFooter(f)
