@@ -6,6 +6,7 @@ import base64
 import datetime
 import sys
 import getopt
+import os
 
 
 def create_connection(db_file):
@@ -267,11 +268,12 @@ def writeActorsDetail(db, f, collection):
 
 if __name__ == '__main__':
 
-    title = "TVThek Index"
-    databaseFile = "tvthek.db"
-    outputFile = '_index.html'
-    clihelp = sys.argv[0] + ' -v -t <title> -d <dbfile> -o <outputfile>'
+    clihelp = sys.argv[0] + ' [-v] [-t <title>] -d <dbfile> [-c <collection>] -o <outputfile>'
+
+    databaseFile = None
+    outputFile = None
     collection = None
+    title = "TVThek Index"
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hvt:d:o:c:", [ "db=","ofile=","collection=" ])
@@ -293,8 +295,16 @@ if __name__ == '__main__':
         elif opt in ("-c", "--collection"):
             collection = arg.split(",")
 
+    if databaseFile is None or outputFile is None:
+        print("Usage: " + clihelp)
+        sys.exit(2)
+
+    if not(os.path.isfile(databaseFile)):
+        print("ERROR: database not found")
+        sys.exit(2)
+
     db = create_connection(databaseFile)
-    with open(outputFile, 'w') as f:
+    with open(outputFile, 'w', encoding='utf8') as f:
         writeHeader(f, title)
         writeMoviesImageTitle(db, f, collection)
         writeMoviesDetail(db, f, collection)

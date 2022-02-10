@@ -390,7 +390,8 @@ def scanActors(db, movie):
 
 if __name__ == '__main__':
 
-    clihelp = sys.argv[0] + ' -v -d <dbfile> -c <collection> -p <path> -t <type> -k <apikey>'
+    clihelp = sys.argv[0] + ' [-q] [-r] [-v] -d <dbfile> -c <collection> -p <path> -t <type> -k <apikey> [-a]'
+
     tmdbApiKey = None
     dbfile = None
     libPath = None
