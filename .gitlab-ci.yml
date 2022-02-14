@@ -1,0 +1,29 @@
+stages:
+#  - lint
+  - release
+
+#linter:
+#    stage: lint
+#    image: python:3-slim-buster
+#    script:
+#        - pip install -U pylint flake8
+#        - pylint *.py
+#        - flake8 *.py --statistics --count
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  tags:
+    - docker-deploy
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - echo "running release_job"
+    - ls -laiR
+    - rm .gitlab-ci.yml
+    - rm venv.sh
+  release:
+    name: 'Release $CI_COMMIT_TAG'
+    description: 'Release $CI_COMMIT_TAG'
+    tag_name: '$CI_COMMIT_TAG'
+    ref: '$CI_COMMIT_TAG'
