@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import json
 import sqlite3
 import glob
-import urllib.parse
 import os
 import re
 import sys
@@ -23,7 +21,7 @@ VERBOSITY_LEVEL = 1
 UNKNOWN_IGNORE = True
 
 
-def verbose(text, level = 1):
+def verbose(text, level=1):
     global VERBOSITY_LEVEL
 
     if VERBOSITY_LEVEL >= level:
@@ -41,14 +39,15 @@ def create_connection(db_file):
         return conn
 
 
-def execute_sql(conn, sql, param = None):
-    if param is None: 
+def execute_sql(conn, sql, param=None, doCommit=False):
+    if param is None:
         param = []
 
     try:
         c = conn.cursor()
         c.execute(sql, param)
-        #conn.commit()
+        if doCommit:
+            conn.commit()
         return c
     except Error as e:
         print(e)
@@ -71,12 +70,12 @@ def cleanup_db(conn):
         for o in obsolete:
             actorsUpdateSQL = "UPDATE actors_movies SET m_id = ? WHERE m_id = ?"
             actorsDeleteSQL = "DELETE FROM actors_movies WHERE m_id = ?"
-            filesUpdateSQL  = "UPDATE files SET movie_id = ? WHERE movie_id = ?"
+            filesUpdateSQL = "UPDATE files SET movie_id = ? WHERE movie_id = ?"
             cleanupSQL = "DELETE FROM movies WHERE id = ?"
             try:
                 c = db.cursor()
                 c.execute(actorsUpdateSQL, (master, o['id']))
-            except Error as e:
+            except Error:
                 cur = execute_sql(db, actorsDeleteSQL, (o['id'], ))
             cur = execute_sql(db, filesUpdateSQL, (master, o['id']))
             cur = execute_sql(db, cleanupSQL, (o['id'], ))
@@ -84,7 +83,7 @@ def cleanup_db(conn):
     verbose("Optimizing database...", 2)
     conn.commit()
     SQL = "VACUUM"
-    #result = execute_sql(conn, SQL)
+    execute_sql(conn, SQL)
 
     return True
 
@@ -98,32 +97,30 @@ def initialize_db(db_file):
 
         verbose("Creating table movies...", 3)
         SQL = 'CREATE TABLE "movies" ("id" INTEGER NOT NULL, "title" TEXT NOT NULL, "title_orig" TEXT NOT NULL, "year" INTEGER NOT NULL, "description" TEXT, "popularity" REAL DEFAULT 0, "score" REAL DEFAULT 0, "poster" BLOB, "tmdb_id" INTEGER, PRIMARY KEY("id" AUTOINCREMENT) )'
-        result = execute_sql(conn, SQL)
-        #SQL = 'INSERT INTO movies("id","title","title_orig","year","description","poster","tmdb_id") VALUES (0,\'\',\'\',0,NULL,NULL,NULL)'
-        #result = execute_sql(conn, SQL)
+        execute_sql(conn, SQL)
 
         verbose("Creating table files...", 3)
         SQL = 'CREATE TABLE "files" ("id" INTEGER, "collection" TEXT DEFAULT NULL, "filename" TEXT NOT NULL, "relpath" TEXT DEFAULT NULL, "size" INTEGER DEFAULT NULL, "ctime" INTEGER DEFAULT NULL, "mtime" INTEGER DEFAULT NULL, "movie_id" INTEGER, "added" INTEGER default (cast(strftime(\'%s\',\'now\') as int)), "lastmod" INTEGER default (cast(strftime(\'%s\',\'now\') as int)), PRIMARY KEY("id" AUTOINCREMENT), FOREIGN KEY("movie_id") REFERENCES"movies"("id"))'
-        result = execute_sql(conn, SQL)
+        execute_sql(conn, SQL)
 
         verbose("Creating table actors...", 3)
         SQL = 'CREATE TABLE "actors" ("id" INTEGER, "name" TEXT NOT NULL, "popularity" REAL, "profile" BLOB, "tmdb_id" INTEGER NOT NULL UNIQUE, PRIMARY KEY("id" AUTOINCREMENT))'
-        result = execute_sql(conn, SQL)
+        execute_sql(conn, SQL)
 
         verbose("Creating table actors/movies...", 3)
         SQL = 'CREATE TABLE "actors_movies" ("a_id" INTEGER NOT NULL, "m_id" INTEGER NOT NULL, FOREIGN KEY("m_id") REFERENCES "movies"("id"), FOREIGN KEY("a_id") REFERENCES "actors"("id"), PRIMARY KEY("a_id","m_id"))'
-        result = execute_sql(conn, SQL)
+        execute_sql(conn, SQL)
 
         verbose("Creating table indices...", 3)
         SQL = 'CREATE UNIQUE INDEX "unique_fn" ON "files" ("collection" ASC, "filename" ASC, "relpath" ASC)'
-        result = execute_sql(conn, SQL)
+        execute_sql(conn, SQL)
 
     else:
         verbose("Connecting database...", 2)
         conn = create_connection(db_file)
 
     SQL = "PRAGMA foreign_keys = ON"
-    result = execute_sql(conn, SQL)
+    execute_sql(conn, SQL)
 
     return conn
 
@@ -153,7 +150,6 @@ def query_cast(movie, tmdbid):
     # parse result
     cast = []
     for c in results['cast']:
-        #verbose(c['name'] + ": " + str(c['popularity']), 2)
         actor = {
             "name": c['name'],
             "photo": c['profile_path'],
@@ -163,16 +159,11 @@ def query_cast(movie, tmdbid):
         }
         cast.append(actor)
     # sort by popularity
-    cast.sort(key=actor_get_popularity, reverse = True)
-    # top10 actors
-    #for c in cast:
-    #    verbose(c['name'] + ": " + str(c['popularity']), 2)
-    #return cast[0:20]
+    cast.sort(key=actor_get_popularity, reverse=True)
     return cast
 
 
 def query_movie(search, name, year):
-    #results = query_movie(search, 'Die fabelhafte Welt der Amélie', 2001)
     verbose(f'Querying movie online: {name} {year}', 2)
     query = {"language": "de", "query": name, "year": year}
     results = search.movies(query)
@@ -181,9 +172,11 @@ def query_movie(search, name, year):
             return None
         else:
             for m in results:
+                print(m['title'], name, int(m['release_date'][0:4]), year)
                 if m['title'] == name and int(m['release_date'][0:4]) == year:
+                    print("OK")
                     return m
-            #no exact match found
+            # no exact match found
             return results[0]
     else:
         return results
@@ -195,8 +188,7 @@ def addFileToDb(db, collection, filename, relpath):
     cur = execute_sql(db, selectSQL, (collection, filename, relpath))
     entry = cur.fetchone()
     if entry is None:
-        #print(insertSQL, collection, filename)
-        result = execute_sql(db, insertSQL, (collection, filename, relpath))
+        execute_sql(db, insertSQL, (collection, filename, relpath))
 
 
 def updateFileMeta(db, filename, attributes):
@@ -208,7 +200,7 @@ def updateFileMeta(db, filename, attributes):
     else:
         parameters = []
         updateSQL = "UPDATE FILES SET "
-        for attr in ('size', 'ctime', 'mtime'):            
+        for attr in ('size', 'ctime', 'mtime'):
             if attributes[attr] != entry[attr]:
                 updateSQL = updateSQL + attr + " = ?, "
                 parameters.append(attributes[attr])
@@ -224,7 +216,7 @@ def updateFileMeta(db, filename, attributes):
 
 def addMovieToDb(db, movie):
     insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, year, description, popularity, score, poster) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    result =  execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster']))
+    result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster']))
     return result.lastrowid
 
 
@@ -250,12 +242,12 @@ def addActorToMovieDb(db, mid, aid):
 
     if entry is None:
         insertSQL = "INSERT INTO actors_movies(a_id, m_id) VALUES (?, ?)"
-        result = execute_sql(db, insertSQL, (aid, mid))
+        execute_sql(db, insertSQL, (aid, mid))
 
     return True
 
 
-def scanDir(db, collection, rootDir, recursiveSearch = False):
+def scanDir(db, collection, rootDir, recursiveSearch=False):
     " scan all files found "
     idx = 0
     verbose("Scanning for new files...", 2)
@@ -264,9 +256,9 @@ def scanDir(db, collection, rootDir, recursiveSearch = False):
     if recursiveSearch:
         scanPath = scanPath + '**/'
     fn = scanPath + '* ([0-9][0-9][0-9][0-9])*.'
-    movies = glob.glob(fn + 'mp4', recursive = recursiveSearch)
+    movies = glob.glob(fn + 'mp4', recursive=recursiveSearch)
     for ext in ('avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpg'):
-        movies.extend(glob.glob(fn + ext, recursive = recursiveSearch))
+        movies.extend(glob.glob(fn + ext, recursive=recursiveSearch))
 
     for m in movies:
         idx = idx + 1
@@ -276,8 +268,8 @@ def scanDir(db, collection, rootDir, recursiveSearch = False):
         size = os.path.getsize(m)
         ctime = os.path.getctime(m)
         mtime = os.path.getmtime(m)
-        result = addFileToDb(db, collection, f, relPath)
-        result = updateFileMeta(db, f, { "collection": collection, "size": size, "ctime": ctime, "mtime": mtime })
+        addFileToDb(db, collection, f, relPath)
+        updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime})
     verbose(f"{idx} files found")
 
     " check if all database files exist "
@@ -295,8 +287,7 @@ def scanDir(db, collection, rootDir, recursiveSearch = False):
 
         if (not os.path.isfile(fn)):
             deleteSQL = f"DELETE FROM files WHERE id = {row['id']}"
-            #print(deleteSQL, fn)
-            result = execute_sql(db, deleteSQL)
+            execute_sql(db, deleteSQL)
 
     " finish "
     db.commit()
@@ -317,23 +308,23 @@ def fetchPoster(posterPath):
 def lookupMovie(db, title, year):
     verbose("Lookup movie: " + title, 2)
     cur = db.cursor()
-    selectSQL = f"SELECT id FROM movies WHERE title=? AND year=?"
+    selectSQL = "SELECT id FROM movies WHERE title=? AND year=?"
     cur = execute_sql(db, selectSQL, (title, year))
     entry = cur.fetchone()
     if entry is None:
         result = query_movie(search, title, year)
         if result is not None:
-                movie = {
-                    "tmdb_id": result['id'],
-                    "title": result['title'],
-                    "orig_title": result['original_title'],
-                    "release_year": result['release_date'][0:4],
-                    "description": result['overview'] if result['overview'] else None,
-                    "popularity": result['popularity'], # https://developers.themoviedb.org/3/getting-started/popularity
-                    "score": result['vote_average'] * 10,
-                    "poster": fetchPoster(result['poster_path']),
-                }
-                return addMovieToDb(db, movie)
+            movie = {
+                "tmdb_id": result['id'],
+                "title": result['title'],
+                "orig_title": result['original_title'],
+                "release_year": result['release_date'][0:4],
+                "description": result['overview'] if result['overview'] else None,
+                "popularity": result['popularity'],  # https://developers.themoviedb.org/3/getting-started/popularity
+                "score": result['vote_average'] * 10,
+                "poster": fetchPoster(result['poster_path'])
+            }
+            return addMovieToDb(db, movie)
         else:
             verbose("Cannot find online: " + title, 1)
             if not UNKNOWN_IGNORE:
@@ -355,8 +346,7 @@ def lookupMovie(db, title, year):
 def assignMovieToFile(db, fid, mid):
     cur = db.cursor()
     updateSQL = "UPDATE files SET movie_id = ? WHERE id = ?"
-    result = cur.execute(updateSQL, (mid, fid))
-    #db.commit()
+    cur.execute(updateSQL, (mid, fid))
     return True
 
 
@@ -366,9 +356,9 @@ def scanMovies(db, search):
     for row in cur.fetchall():
         m = re.search('(.*) \(([0-9][0-9][0-9][0-9])\).+', row['filename'])
         basename = m.group(1)
-        year = m.group(2)
+        year = int(m.group(2))
         m_id = lookupMovie(db, basename, year)
-        result = assignMovieToFile(db, row['id'], m_id)
+        assignMovieToFile(db, row['id'], m_id)
         db.commit()
     return None
 
@@ -381,9 +371,8 @@ def scanActors(db, movie):
         verbose("Lookup cast for " + row['title'], 2)
         cast = query_cast(movie, row['tmdb_id'])
         for actor in cast:
-            #if actor['popularity'] >= 0:
             aid = addActorToDb(db, actor)
-            result = addActorToMovieDb(db, row['id'], aid)
+            addActorToMovieDb(db, row['id'], aid)
         db.commit()
     return None
 
@@ -400,7 +389,7 @@ if __name__ == '__main__':
     recursiveSearch = False
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hqvd:p:t:k:c:ar", [ "db=", "path=", "type=", 'key=', 'add-unknown=', "collection=" ])
+        opts, args = getopt.getopt(sys.argv[1:], "hqvd:p:t:k:c:ar", ["db=", "path=", "type=", 'key=', 'add-unknown=', "collection="])
     except getopt.GetoptError:
         verbose(clihelp, 0)
         sys.exit(2)

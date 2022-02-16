@@ -14,13 +14,13 @@ def create_connection(db_file):
     try:
         conn = sqlite3.connect(db_file)
         conn.row_factory = sqlite3.Row
-    except Error as e:
+    except BaseException as e:
         print(e)
     else:
         return conn
 
 
-def getMovies(db, where = None, orderby = None, limit = None):
+def getMovies(db, where=None, orderby=None, limit=None):
     cur = db.cursor()
     selectSQL = "SELECT DISTINCT m.* FROM movies m JOIN files f ON m.id=f.movie_id"
     if where:
@@ -33,18 +33,18 @@ def getMovies(db, where = None, orderby = None, limit = None):
     return cur.fetchall()
 
 
-def getActors(db, where = None, orderby = "popularity DESC, name ASC"):
+def getActors(db, where=None, orderby="popularity DESC, name ASC"):
     cur = db.cursor()
     selectSQL = "SELECT DISTINCT a.* FROM actors a"
     if where:
         selectSQL = f"{selectSQL} JOIN actors_movies am ON am.a_id=a.id JOIN movies m ON am.m_id=m.id JOIN files f ON f.movie_id = m.id WHERE {where}"
     if orderby:
-        selectSQL = f"{selectSQL} ORDER BY {orderby}"    
+        selectSQL = f"{selectSQL} ORDER BY {orderby}"
     cur.execute(selectSQL)
     return cur.fetchall()
 
 
-def getCast(db, mid, limit = None):
+def getCast(db, mid, limit=None):
     cur = db.cursor()
     selectSQL = "SELECT a.* FROM actors_movies c JOIN actors a ON c.a_id = a.id JOIN movies m ON c.m_id = m.id WHERE m.id = ? ORDER BY a.popularity DESC"
     if limit:
@@ -67,7 +67,7 @@ def getMoviesByActor(db, aid):
     return cur.fetchall()
 
 
-def writeHeader(f, title = "TVThek Index"):
+def writeHeader(f, title="TVThek Index"):
     now = datetime.datetime.now()
     f.write('<!DOCTYPE html>')
     f.write('<html lang="de">')
@@ -134,25 +134,23 @@ def writeMoviesImageTitle(db, f, collection):
 
 def movieRatingColor(score):
     scorecolor = "info"
-    if score==0:
-        scorecolor='warning'
-    elif score<50:
-        scorecolor='danger'
-    elif score>=70:
-        scorecolor='success'
+    if score == 0:
+        scorecolor = 'warning'
+    elif score < 50:
+        scorecolor = 'danger'
+    elif score >= 70:
+        scorecolor = 'success'
     return scorecolor
 
 
 def writeMoviesDetail(db, f, collection):
-    idx = 0
-    lastyear = 0
     whereSql = ""
     if collection:
         whereSql = whereSql + "("
         for col in collection:
             whereSql = whereSql + f"(collection='{col}') OR "
         whereSql = whereSql[0:-4] + ")"
-    
+
     movies = getMovies(db, whereSql, "m.title COLLATE NOCASE ASC, year ASC", None)
     f.write('<section id="movies">')
     for m in movies:
@@ -177,7 +175,7 @@ def writeMoviesDetail(db, f, collection):
         actors = ""
         cast = getCast(db, id, "0,15")
         for actor in cast:
-            actors = actors + '<a href="#actor-' + str(actor['id']) + '" title="' + str(int(actor['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + actor['name']+ '</a> '
+            actors = actors + '<a href="#actor-' + str(actor['id']) + '" title="' + str(int(actor['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + actor['name'] + '</a> '
         collectionstr = ""
         collections = getCollections(db, id)
         for col in collections:
@@ -186,9 +184,9 @@ def writeMoviesDetail(db, f, collection):
             else:
                 colstr = col['collection']
             collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
-        f.write(f"""            
+        f.write(f"""
                 <div class="row row-striped p-3" id="movie-{id}" data-search='["{title}"]'>
-                    <div class="col"><h3>{title}</h3>{titleext}</div>
+                    <div class="col" style="word-break: break-all;"><h3>{title}</h3>{titleext}</div>
                     <div class="col">{posterhtml}</div>
                     <div class="col">
                         <dl>
@@ -197,12 +195,17 @@ def writeMoviesDetail(db, f, collection):
                             <dt>Kollektionen</dt><dd>{collectionstr}</dd>
                         </dl>
                     </div>
-                    <div class="col-6"><div class="description"><p>{description}</p><p>{actors}</p></div></div>
+                    <div class="col-6"><div class="description"><p style="hyphens: auto; text-align: justify;">{description}</p><p>{actors}</p></div></div>
             </div>""")
+    cntmovies = len(movies)
+    if cntmovies == 1:
+        f.write(f"{cntmovies} Film gelistet")
+    else:
+        f.write(f"{cntmovies} Filme gelistet")
     f.write('\n</section>\n')
 
 
-def actorListedChoice(mcnt = 0, popularity = 0):
+def actorListedChoice(mcnt=0, popularity=0):
     if popularity >= 40:
         return True
     elif mcnt > 3:
@@ -248,12 +251,12 @@ def writeActorsDetail(db, f, collection):
         movies = getMoviesByActor(db, id)
         if actorListedChoice(len(movies), popularity):
             i = i + 1
-            f.write(f"""            
+            f.write(f"""
                     <div class="row row-striped p-3" id="actor-{id}" data-search='["{name}"]'>
                         <div class="col"><b>{name}</b></div>
                         <div class="col">{profilehtml}</div>
                         <div class="col">{popularityhtml}</div>
-                        <div class="col-6"><div class="description">""");
+                        <div class="col-6"><div class="description">""")
             for m in movies:
                 mid = m['id']
                 title = m['title']
@@ -276,7 +279,7 @@ if __name__ == '__main__':
     title = "TVThek Index"
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hvt:d:o:c:", [ "db=","ofile=","collection=" ])
+        opts, args = getopt.getopt(sys.argv[1:], "hvt:d:o:c:", ["db=", "ofile=", "collection="])
     except getopt.GetoptError:
         print(clihelp)
         sys.exit(2)

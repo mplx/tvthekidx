@@ -1,27 +1,30 @@
 stages:
-#  - lint
+  - lint
   - release
 
-#linter:
-#    stage: lint
-#    image: python:3-slim-buster
-#    script:
-#        - pip install -U pylint flake8
-#        - pylint *.py
-#        - flake8 *.py --statistics --count
+linter:
+  stage: lint
+  image: python:3-slim-buster
+  tags:
+    - docker-build
+  script:
+    - pip install -U pylint flake8 tmdbv3api
+    - pylint -E gen*.py
+    - flake8 gen*.py --ignore=E501,W605 --statistics --count
 
 release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   tags:
     - docker-deploy
+  needs:
+    - job: linter
   rules:
-    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9a-zA-Z.-]+))?$/
+  variables:
+    GIT_STRATEGY: none
   script:
     - echo "running release_job"
-    - ls -laiR
-    - rm .gitlab-ci.yml
-    - rm venv.sh
   release:
     name: 'Release $CI_COMMIT_TAG'
     description: 'Release $CI_COMMIT_TAG'
