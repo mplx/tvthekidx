@@ -172,9 +172,7 @@ def query_movie(search, name, year):
             return None
         else:
             for m in results:
-                print(m['title'], name, int(m['release_date'][0:4]), year)
                 if m['title'] == name and int(m['release_date'][0:4]) == year:
-                    print("OK")
                     return m
             # no exact match found
             return results[0]

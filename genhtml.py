@@ -186,7 +186,7 @@ def writeMoviesDetail(db, f, collection):
             collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
         f.write(f"""
                 <div class="row row-striped p-3" id="movie-{id}" data-search='["{title}"]'>
-                    <div class="col" style="word-break: break-all;"><h3>{title}</h3>{titleext}</div>
+                    <div class="col" style="hyphens: auto;"><h3>{title}</h3>{titleext}</div>
                     <div class="col">{posterhtml}</div>
                     <div class="col">
                         <dl>
