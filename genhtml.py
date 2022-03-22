@@ -69,30 +69,47 @@ def getMoviesByActor(db, aid):
 
 def writeHeader(f, title="TVThek Index"):
     now = datetime.datetime.now()
-    f.write('<!DOCTYPE html>')
-    f.write('<html lang="de">')
-    f.write('<header>')
-    f.write('<meta charset="utf-8"/>\n')
-    f.write('<title>' + title + ' - ' + now.strftime("%d.%m.%Y") + '</title>\n')
-    f.write('<link type="text/css" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">\n')
-    f.write('<style>\n')
-    f.write('.row-striped:nth-child(odd) { background-color: #eafafa; }\n')
-    f.write('.row-striped:nth-child(even) { background-color: #ffffff; }\n')
-    f.write('</style\n')
-    f.write('</header>\n')
-    f.write('</body>\n')
-    f.write('<div class="container">')
-    f.write('<h1>' + title + '</h1>\nStand: ' + now.strftime("%d.%m.%Y"))
+    f.write('<!DOCTYPE html>\n')
+    f.write('<html lang="de">\n')
+    f.write('<head>\n')
+    f.write('   <meta charset="utf-8"/>\n')
+    f.write('   <title>' + title + ' - ' + now.strftime("%d.%m.%Y") + '</title>\n')
+    f.write('   <link type="text/css" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">\n')
+    f.write('   <style>\n')
+    f.write('       .row-striped:nth-child(odd) { background-color: #eafafa; }\n')
+    f.write('       .row-striped:nth-child(even) { background-color: #ffffff; }\n')
+    f.write('       h1,h2,h3,h4 { padding-top: 54px; margin-top: -54px; }\n')
+    f.write('       body { padding-top: 54px; }\n')
+    f.write('   </style\n')
+    f.write('</head>\n')
+    f.write('<body>\n')
+    f.write('<nav class="navbar navbar-expand-lg fixed-top navbar-light bg-light">')
+    f.write('   <div class="container-fluid">')
+    f.write('       <a class="navbar-brand" href="#">' + title + '</a>')
+    f.write('       <div class="collapse navbar-collapse" id="navbarSupportedContent">')
+    f.write('           <ul class="navbar-nav me-auto mb-2 mb-lg-0">')
+    f.write('               <li class="nav-item"><a class="nav-link" href="#top">Top</a></li>')
+    f.write('               <li class="nav-item"><a class="nav-link" href="#new">Neu</a></li>')
+    f.write('               <li class="nav-item"><a class="nav-link" href="#index">Verzeichnis</a></li>')
+    f.write('               <li class="nav-item"><a class="nav-link" href="#actor">Darsteller</a></li>')
+    f.write('           </ul>')
+    f.write('           <span class="navbar-text">Stand: ' + now.strftime("%d.%m.%Y") + '</span>')
+    f.write('       </div>')
+    f.write('   </div>')
+    f.write('</nav>\n')
+    f.write('<div class="container">\n')
 
 
 def writeFooter(f):
-    f.write('</div>')
-    f.write('<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>')
-    f.write('</body>')
-    f.write('</html>')
+    f.write('</div>\n')
+    f.write('<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>\n')
+    f.write('</body>\n')
+    f.write('</html>\n')
 
 
 def writeMoviesImageTitle(db, f, collection):
+    f.write('<h3 id="top">Top</h3>')
+
     orderBy = "score DESC, year DESC, m.title COLLATE NOCASE ASC"
     whereSql = "NOT (poster IS NULL)"
     if collection:
@@ -116,7 +133,25 @@ def writeMoviesImageTitle(db, f, collection):
         f.write(f'{posterhtml}')
     f.write('\n</section>\n')
 
-    movies = getMovies(db, whereSql, orderBy, "24,126")
+    movies = getMovies(db, whereSql, orderBy, "24,84")
+    f.write('<section id="img2">\n')
+    for m in movies:
+        id = m['id']
+        title = m['title']
+        year = m['year']
+        score = int(m['score'])
+        if m['poster']:
+            poster = base64.b64encode(m['poster']).decode('ascii')
+        else:
+            poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
+        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"60\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
+        f.write(f'{posterhtml}')
+    f.write('\n</section>\n')
+
+    f.write('<h3 id="new">Neu</h3>')
+
+    orderBy = "added DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
+    movies = getMovies(db, whereSql, orderBy, "0,21")
     f.write('<section id="img2">\n')
     for m in movies:
         id = m['id']
@@ -144,6 +179,8 @@ def movieRatingColor(score):
 
 
 def writeMoviesDetail(db, f, collection):
+    f.write('<h3 id="index">Verzeichnis</h3>')
+
     whereSql = ""
     if collection:
         whereSql = whereSql + "("
@@ -185,8 +222,8 @@ def writeMoviesDetail(db, f, collection):
                 colstr = col['collection']
             collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
         f.write(f"""
-                <div class="row row-striped p-3" id="movie-{id}" data-search='["{title}"]'>
-                    <div class="col" style="hyphens: auto;"><h3>{title}</h3>{titleext}</div>
+                <div class="row row-striped p-3" data-search='["{title}"]'>
+                    <div class="col" style="hyphens: auto;"><h3 id="movie-{id}">{title}</h3>{titleext}</div>
                     <div class="col">{posterhtml}</div>
                     <div class="col">
                         <dl>
@@ -227,7 +264,7 @@ def writeActorsDetail(db, f, collection):
 
     actors = getActors(db, whereSql)
 
-    f.write("<h3>Darsteller</h3>")
+    f.write('<h3 id="actor">Darsteller</h3>')
     f.write('<section id="actors">')
     i = 0
     total = len(actors)
@@ -252,8 +289,8 @@ def writeActorsDetail(db, f, collection):
         if actorListedChoice(len(movies), popularity):
             i = i + 1
             f.write(f"""
-                    <div class="row row-striped p-3" id="actor-{id}" data-search='["{name}"]'>
-                        <div class="col"><b>{name}</b></div>
+                    <div class="row row-striped p-3" data-search='["{name}"]'>
+                        <div class="col"><h4 id="actor-{id}">{name}</h4></div>
                         <div class="col">{profilehtml}</div>
                         <div class="col">{popularityhtml}</div>
                         <div class="col-6"><div class="description">""")
