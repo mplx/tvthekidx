@@ -151,7 +151,7 @@ def writeMoviesImageTitle(db, f, collection):
     f.write('<h3 id="new">Neu</h3>')
 
     orderBy = "added DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
-    movies = getMovies(db, whereSql, orderBy, "0,21")
+    movies = getMovies(db, whereSql, orderBy, "0,84")
     f.write('<section id="img2">\n')
     for m in movies:
         id = m['id']
