@@ -9,8 +9,8 @@ linter:
     - docker-build
   script:
     - pip install -U pylint flake8 tmdbv3api
-    - pylint -E gen*.py
-    - flake8 gen*.py --ignore=E501,W605 --statistics --count
+    - pylint --version && pylint -E src/*.py
+    - flake8 --version && flake8 src/*.py --ignore=E501 --statistics --count
 
 release:
   stage: release
