@@ -5,7 +5,7 @@ import sqlite3
 import base64
 import datetime
 import sys
-import getopt
+import argparse
 import os
 
 
@@ -221,9 +221,10 @@ def writeMoviesDetail(db, f, collection):
             else:
                 colstr = col['collection']
             collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
+        copyselector = ''  # '<div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault"></div>'
         f.write(f"""
                 <div class="row row-striped p-3" data-search='["{title}"]'>
-                    <div class="col" style="hyphens: auto;"><h3 id="movie-{id}">{title}</h3>{titleext}</div>
+                    <div class="col" style="hyphens: auto;"><h3 id="movie-{id}">{title}</h3>{titleext}{copyselector}</div>
                     <div class="col">{posterhtml}</div>
                     <div class="col">
                         <dl>
@@ -307,46 +308,34 @@ def writeActorsDetail(db, f, collection):
 
 
 if __name__ == '__main__':
-
-    clihelp = sys.argv[0] + ' [-v] [-t <title>] -d <dbfile> [-c <collection>] -o <outputfile>'
-
     databaseFile = None
     outputFile = None
     collection = None
     title = "TVThek Index"
 
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "hvt:d:o:c:", ["db=", "ofile=", "collection="])
-    except getopt.GetoptError:
-        print(clihelp)
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            print(clihelp)
-            sys.exit()
-        elif opt == '-v':
-            verboseSetting = True
-        elif opt == '-t':
-            title = arg
-        elif opt in ("-d", "--db"):
-            databaseFile = arg
-        elif opt in ("-o", "--ofile"):
-            outputFile = arg
-        elif opt in ("-c", "--collection"):
-            collection = arg.split(",")
+    parser = argparse.ArgumentParser(prog='genhtml', description='generate html index out of tvthekidx database')
+    parser.add_argument('--title', '-t', action='store', dest='title', default='TVThek Index', help='page title')
+    parser.add_argument('--database', '-d', action='store', dest='databaseFile', default='tvthek.db', help='TVthekIdx database')
+    parser.add_argument('--output', '-o', action='store', dest='outputFile', default='tvthek.html', help='oputput file')
+    parser.add_argument('--collection', '-c', action='store', dest='collectionStr', default=None, help='comma-separated list of collections')
+    parser.add_argument('--skip-actors', action='store_true', dest='skipActors', help='do not include actors section')
+    parser.add_argument('--skip-header', action='store_true', dest='skipHeader', help='do not include header with top and new sections')
+    args = parser.parse_args()
 
-    if databaseFile is None or outputFile is None:
-        print("Usage: " + clihelp)
+    collection = None
+    if args.collectionStr:
+        collection = args.collectionStr.split(",")
+
+    if not(os.path.isfile(args.databaseFile)):
+        print(f"ERROR: database '{args.databaseFile}' not found")
         sys.exit(2)
 
-    if not(os.path.isfile(databaseFile)):
-        print("ERROR: database not found")
-        sys.exit(2)
-
-    db = create_connection(databaseFile)
-    with open(outputFile, 'w', encoding='utf8') as f:
-        writeHeader(f, title)
-        writeMoviesImageTitle(db, f, collection)
+    db = create_connection(args.databaseFile)
+    with open(args.outputFile, 'w', encoding='utf8') as f:
+        writeHeader(f, args.title)
+        if not args.skipHeader:
+            writeMoviesImageTitle(db, f, collection)
         writeMoviesDetail(db, f, collection)
-        writeActorsDetail(db, f, collection)
+        if not args.skipActors:
+            writeActorsDetail(db, f, collection)
         writeFooter(f)

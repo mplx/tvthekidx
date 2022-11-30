@@ -6,7 +6,7 @@ import glob
 import os
 import re
 import sys
-import getopt
+import argparse
 
 from urllib.request import urlopen
 
@@ -255,7 +255,7 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         scanPath = scanPath + '**/'
     fn = scanPath + '* ([0-9][0-9][0-9][0-9])*.'
     movies = glob.glob(fn + 'mp4', recursive=recursiveSearch)
-    for ext in ('avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpg'):
+    for ext in ('avi', 'm4v', 'mkv', 'mov', 'mpg'):
         movies.extend(glob.glob(fn + ext, recursive=recursiveSearch))
 
     for m in movies:
@@ -377,8 +377,6 @@ def scanActors(db, movie):
 
 if __name__ == '__main__':
 
-    clihelp = sys.argv[0] + ' [-q] [-r] [-v] -d <dbfile> -c <collection> -p <path> -t <type> -k <apikey> [-a]'
-
     tmdbApiKey = None
     dbfile = None
     libPath = None
@@ -386,42 +384,34 @@ if __name__ == '__main__':
     collection = None
     recursiveSearch = False
 
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "hqvd:p:t:k:c:ar", ["db=", "path=", "type=", 'key=', 'add-unknown=', "collection="])
-    except getopt.GetoptError:
-        verbose(clihelp, 0)
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            print(clihelp)
-            sys.exit()
-        elif opt == '-q':
-            VERBOSITY_LEVEL = 0
-        elif opt == '-r':
-            recursiveSearch = True
-        elif opt == '-v':
-            VERBOSITY_LEVEL = VERBOSITY_LEVEL + 1
-        elif opt in ("-d", "--db"):
-            dbfile = arg
-        elif opt in ("-p", "--path"):
-            libPath = arg
-        elif opt in ("-t", "--type"):
-            libType = arg
-        elif opt in ("-k", "--key"):
-            tmdbApiKey = arg
-        elif opt in ("-c", "--collection"):
-            collection = arg
-        elif opt in ("-a", "--add-unknown"):
-            UNKNOWN_IGNORE = False
+    parser = argparse.ArgumentParser(prog='genindex', description='create and maintain the tvthekidx database')
+    parser.add_argument('--database', '-d', action='store', dest='dbfile', default='tvthek.db', help='TVthekIdx database')
+    parser.add_argument('--path', '-p', action='store', dest='libPath', help='path to scan', required=True)
+    parser.add_argument('--type', '-t', action='store', dest='libType', default='movies', help='type of content')
+    parser.add_argument('--key', '-k', action='store', dest='tmdbApiKey', help='TMDB API key', required=True)
+    parser.add_argument('--collection', '-c', action='store', dest='collection', default='TVthek', help='collection name')
+    parser.add_argument('--recursive', '-r', action='store_true', dest='recursiveSearch', help='recursive search')
+    parser.add_argument('--add-unknown', '-a', action='store_true', dest='addUnknown', help='add unknown content to database')
+    parser.add_argument('--quiet', '-q', action='store_true', dest='quiet', help='quiet (set verbose to 0)')
+    parser.add_argument('--verbose', '-v', action='count', dest='verbose', default=0, help='verbosity level')
+    args = parser.parse_args()
 
-    if tmdbApiKey is None or dbfile is None or libPath is None or libType is None or libType != "movies" or collection is None:
-        print("Usage: " + clihelp)
+    if args.quiet:
+        VERBOSITY_LEVEL = 0
+    else:
+        VERBOSITY_LEVEL = args.verbose + 1
+
+    if args.addUnknown:
+        UNKNOWN_IGNORE = False
+
+    if args.libType != "movies":
+        print("ERROR: currently only type movies supported")
         sys.exit(2)
 
     verbose("Verbosity level: " + str(VERBOSITY_LEVEL), 2)
-    db = initialize_db(dbfile)
-    movie, search = initialize_tmdb(tmdbApiKey)
-    scanDir(db, collection, libPath, recursiveSearch)
+    db = initialize_db(args.dbfile)
+    movie, search = initialize_tmdb(args.tmdbApiKey)
+    scanDir(db, args.collection, args.libPath, args.recursiveSearch)
     scanMovies(db, search)
     scanActors(db, movie)
     cleanup_db(db)
