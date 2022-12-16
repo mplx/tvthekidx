@@ -421,7 +421,7 @@ def getCollections(db, mid):
 
 def getMoviesByActor(db, aid):
     cur = db.cursor()
-    selectSQL = "SELECT m.id, m.title, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ? ORDER BY m.year ASC, m.title ASC"
+    selectSQL = "SELECT m.id, m.title, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ? ORDER BY m.title COLLATE NOCASE ASC, m.year ASC"
     cur.execute(selectSQL, (aid, ))
     return cur.fetchall()
 
