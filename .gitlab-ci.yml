@@ -88,7 +88,20 @@ test-debian-buster-on-buster-x64:
 
 test-debian-buster-on-bullseye-x64:
     stage: test
-    image: debian:buster-slim
+    image: debian:bullseye-slim
+    tags:
+        - docker-build
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - dist/tvthekidx-buster -h
+    needs:
+        - job: build-debian-buster-x64
+          artifacts: true
+
+test-debian-buster-on-bookworm-x64:
+    stage: test
+    image: debian:bookworm-slim
     tags:
         - docker-build
     variables:
