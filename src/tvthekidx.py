@@ -414,7 +414,7 @@ def getCast(db, mid, limit=None):
 
 def getCollections(db, mid):
     cur = db.cursor()
-    selectSQL = "SELECT DISTINCT collection, filename FROM files WHERE movie_id = ? ORDER BY collection ASC"
+    selectSQL = "SELECT DISTINCT collection, filename, size FROM files WHERE movie_id = ? ORDER BY collection ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
 
@@ -579,7 +579,8 @@ def writeMoviesDetail(db, f, collection):
                 colstr = "k.A."
             else:
                 colstr = col['collection']
-            collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
+            colsize = "{:.2f}".format(col['size'] / 1024 / 1024 / 1024) + ' GB'
+            collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{col['filename']}\">{colstr}</a> "
         copyselector = ''  # '<div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault"></div>'
         f.write(f"""
                 <div class="row row-striped p-3" data-search='["{title}"]'>
