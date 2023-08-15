@@ -432,6 +432,7 @@ def writeHeader(f, title="TVThek Index"):
     f.write('<html lang="de">\n')
     f.write('<head>\n')
     f.write('   <meta charset="utf-8"/>\n')
+    f.write('   <meta name="viewport" content="width=device-width, initial-scale=1.0">\n')
     f.write('   <title>' + title + ' - ' + now.strftime("%d.%m.%Y") + '</title>\n')
     f.write('   <link type="text/css" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">\n')
     f.write('   <style>\n')
@@ -452,6 +453,10 @@ def writeHeader(f, title="TVThek Index"):
     f.write('               <li class="nav-item"><a class="nav-link" href="#index">Verzeichnis</a></li>')
     f.write('               <li class="nav-item"><a class="nav-link" href="#actor">Darsteller</a></li>')
     f.write('           </ul>')
+    f.write('           <form class="d-flex" role="search" onsubmit="return false;">')
+    f.write('               <div id="spinner" class="spinner-grow text-secondary" role="status"><span class="visually-hidden"></span></div>')
+    f.write('               <input id="searchInput" class="form-control me-1" type="search" placeholder="Titel" aria-label="Titel">')
+    f.write('           </form>')
     f.write('           <span class="navbar-text">Stand: ' + now.strftime("%d.%m.%Y") + '</span>')
     f.write('       </div>')
     f.write('   </div>')
@@ -462,6 +467,68 @@ def writeHeader(f, title="TVThek Index"):
 def writeFooter(f):
     f.write('</div>\n')
     f.write('<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>\n')
+    f.write('''<script>
+        var TVAPP = {};
+
+        const searchInput = document.getElementById('searchInput');
+        const rows = document.querySelectorAll('#movies .row');
+
+        searchInput.addEventListener('input', handleSearch);
+
+        function handleSearch() {
+            const searchTerm = searchInput.value.trim().toLowerCase();
+
+            document.getElementById("spinner").style.visibility = 'visible';
+
+            if (searchTerm.length === 0) {
+                document.getElementById("top").removeAttribute("hidden");
+                document.getElementById("top1").removeAttribute("hidden");
+                document.getElementById("top2").removeAttribute("hidden");
+                document.getElementById("new").removeAttribute("hidden");
+                document.getElementById("new1").removeAttribute("hidden");
+                document.getElementById("actor").removeAttribute("hidden");
+                document.getElementById("actors").removeAttribute("hidden");
+            } else {
+                document.getElementById("top").setAttribute("hidden", "hidden");
+                document.getElementById("top1").setAttribute("hidden", "hidden");
+                document.getElementById("top2").setAttribute("hidden", "hidden");
+                document.getElementById("new").setAttribute("hidden", "hidden");
+                document.getElementById("new1").setAttribute("hidden", "hidden");
+                document.getElementById("actor").setAttribute("hidden", "hidden");
+                document.getElementById("actors").setAttribute("hidden", "hidden");
+            }
+
+            TVAPP.cntFound = 0;
+            TVAPP.cntNotFound = 0;
+
+            rows.forEach(row => {
+                const dataSearch = row.getAttribute('data-search').toLowerCase();
+                if (searchTerm.length === 0) {
+                    row.style.display = 'flex';
+                    TVAPP.cntFound++;
+                } else {
+                    if (dataSearch.includes(searchTerm)) {
+                        row.style.display = 'flex';
+                        TVAPP.cntFound++;
+                    } else {
+                        row.style.display = 'none';
+                        TVAPP.cntNotFound++;
+                    }
+                }
+            });
+
+            if (TVAPP.cntFound == 0) {
+                document.getElementById("moviecounter").innerHTML = 'keine Filme gefunden';
+            } else if (TVAPP.cntNotFound == 0) {
+                document.getElementById("moviecounter").innerHTML = TVAPP.cntFound + ' Filme gelistet';
+            } else {
+                document.getElementById("moviecounter").innerHTML = TVAPP.cntFound + ' / ' + (TVAPP.cntFound+TVAPP.cntNotFound) + ' Filme gefunden';
+            }
+
+            document.getElementById("spinner").style.visibility = 'hidden';
+        }
+        document.getElementById("spinner").style.visibility = 'hidden';
+    </script>\n''')
     f.write('</body>\n')
     f.write('</html>\n')
 
@@ -478,7 +545,7 @@ def writeMoviesImageTitle(db, f, collection):
         whereSql = whereSql[0:-4] + ")"
 
     movies = getMovies(db, whereSql, orderBy, "0,24")
-    f.write('<section id="img1">\n')
+    f.write('<section id="top1">\n')
     for m in movies:
         id = m['id']
         title = m['title']
@@ -493,7 +560,7 @@ def writeMoviesImageTitle(db, f, collection):
     f.write('\n</section>\n')
 
     movies = getMovies(db, whereSql, orderBy, "24,84")
-    f.write('<section id="img2">\n')
+    f.write('<section id="top2">\n')
     for m in movies:
         id = m['id']
         title = m['title']
@@ -511,7 +578,7 @@ def writeMoviesImageTitle(db, f, collection):
 
     orderBy = "added DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
     movies = getMovies(db, whereSql, orderBy, "0,84")
-    f.write('<section id="img2">\n')
+    f.write('<section id="new1">\n')
     for m in movies:
         id = m['id']
         title = m['title']
@@ -597,9 +664,9 @@ def writeMoviesDetail(db, f, collection):
             </div>""")
     cntmovies = len(movies)
     if cntmovies == 1:
-        f.write(f"{cntmovies} Film gelistet")
+        f.write(f"<span id='moviecounter'>{cntmovies} Film gelistet</span>")
     else:
-        f.write(f"{cntmovies} Filme gelistet")
+        f.write(f"<span id='moviecounter'>{cntmovies} Filme gelistet</span>")
     f.write('\n</section>\n')
 
 
