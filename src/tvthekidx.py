@@ -470,11 +470,6 @@ def writeFooter(f):
     f.write('''<script>
         var TVAPP = {};
 
-        const searchInput = document.getElementById('searchInput');
-        const rows = document.querySelectorAll('#movies .row');
-
-        searchInput.addEventListener('input', handleSearch);
-
         function handleSearch() {
             const searchTerm = searchInput.value.trim().toLowerCase();
 
@@ -527,7 +522,29 @@ def writeFooter(f):
 
             document.getElementById("spinner").style.visibility = 'hidden';
         }
+
+        const searchInput = document.getElementById('searchInput');
+        const rows = document.querySelectorAll('#movies .row');
+
+        searchInput.addEventListener('input', handleSearch);
+        searchInput.addEventListener('focus', function() { this.select(); });
+
+        window.addEventListener("keydown", (e) => {
+          if (e.code === 'F3' || ((e.ctrlKey || e.metaKey) && e.code === 'KeyF')) {
+            e.preventDefault();
+            searchInput.focus();
+          }
+        })
+
         document.getElementById("spinner").style.visibility = 'hidden';
+
+        window.addEventListener("keydown", (e) => {
+          if (e.code === 'F3' || ((e.ctrlKey || e.metaKey) && e.code === 'KeyF')) {
+            e.preventDefault();
+            const search = document.querySelector('#searchInput')
+            search.focus()
+          }
+        })
     </script>\n''')
     f.write('</body>\n')
     f.write('</html>\n')
