@@ -2,7 +2,7 @@
 
 Generates an index of tvthek downloaded content
 
-## Usage (version 0.1.0, 0.2.0)
+## Usage (version 0.1.x, 0.2.x, 0.3.x)
 
 Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www.themoviedb.org/documentation/api).
 
