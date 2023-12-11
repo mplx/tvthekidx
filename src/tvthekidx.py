@@ -414,7 +414,7 @@ def getCast(db, mid, limit=None):
 
 def getCollections(db, mid):
     cur = db.cursor()
-    selectSQL = "SELECT DISTINCT collection, filename, size FROM files WHERE movie_id = ? ORDER BY collection ASC"
+    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime FROM files WHERE movie_id = ? ORDER BY collection ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
 
@@ -625,10 +625,12 @@ def writeMoviesDetail(db, f, collection):
     f.write('<h3 id="index">Verzeichnis</h3>')
 
     whereSql = ""
+    fileDetail = 0
     if collection:
         whereSql = whereSql + "("
         for col in collection:
             whereSql = whereSql + f"(collection='{col}') OR "
+            fileDetail += 1
         whereSql = whereSql[0:-4] + ")"
 
     movies = getMovies(db, whereSql, "m.title COLLATE NOCASE ASC, year ASC", None)
@@ -656,16 +658,41 @@ def writeMoviesDetail(db, f, collection):
         cast = getCast(db, id, "0,15")
         for actor in cast:
             actors = actors + '<a href="#actor-' + str(actor['id']) + '" title="' + str(int(actor['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + actor['name'] + '</a> '
+        metadatastr = ""
         collectionstr = ""
         collections = getCollections(db, id)
         for col in collections:
-            if col['collection'] is None:
-                colstr = "k.A."
-            else:
+            if col['collection'] is not None:
                 colstr = col['collection']
+            else:
+                colstr = "k.A."
             colsize = "{:.2f}".format(col['size'] / 1024 / 1024 / 1024) + ' GB'
-            collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{col['filename']}\">{colstr}</a> "
+            dbtime = datetime.datetime.fromtimestamp(col['added']).strftime('%d.%m.%Y')
+            fctime = datetime.datetime.fromtimestamp(col['ctime']).strftime('%d.%m.%Y')
+            tmdbid = m["tmdb_id"]
+            movieid = m["id"]
+            fileid = col["id"]
+            if fileDetail != 1:
+                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{col['filename']}\">{colstr}</a> "
+            else:
+                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
+                metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">{colsize}</span> "
+                if col['ctime'] > col['added']:
+                    metadatastr = metadatastr + f"<span class=\"badge bg-info\" title=\"Datei (Datenbank {dbtime})\">{fctime}</span> "
+                else:
+                    metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Datei\">{fctime}</span> "
+                if m["tmdb_id"] is not None:
+                    metadatastr = metadatastr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"TheMovieDatabase={tmdbid} DbMovieID={movieid} DbFileID={fileid}\" href=\"https://www.themoviedb.org/movie/{tmdbid}\">TMDB</a> "
+                else:
+                    metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"DbMovieID={movieid} DbFileID={fileid}\">ID</span> "
+            metadatastr = metadatastr + "<br />"
         copyselector = ''  # '<div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault"></div>'
+        if fileDetail == 1:
+            collectionstr = f"<dt>Bibliothek</dt><dd>{collectionstr}</dd>"
+            metadatastr = f"<dt>Details</dt><dd>{metadatastr}</dd>"
+        else:
+            collectionstr = f"<dt>Bibliotheken</dt><dd>{collectionstr}</dd>"
+            metadatastr = ""
         f.write(f"""
                 <div class="row row-striped p-3" data-search='["{title}"]'>
                     <div class="col" style="hyphens: auto;"><h3 id="movie-{id}">{title}</h3>{titleext}{copyselector}</div>
@@ -674,7 +701,7 @@ def writeMoviesDetail(db, f, collection):
                         <dl>
                             <dt>Jahr</dt><dd><span class="badge bg-secondary">{year}</span></dd>
                             <dt>Wertung</dt><dd><span class="badge bg-{scorecolor}">{score}</span></dd>
-                            <dt>Kollektionen</dt><dd>{collectionstr}</dd>
+                            {collectionstr}{metadatastr}
                         </dl>
                     </div>
                     <div class="col-6"><div class="description"><p style="hyphens: auto; text-align: justify;">{description}</p><p>{actors}</p></div></div>
