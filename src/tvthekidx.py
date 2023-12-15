@@ -848,26 +848,25 @@ def exporter(args):
 
 
 def dbtools(args):
-    match args.action:
-        case 'create':
-            if os.path.isfile(args.dbfile):
-                print(f"ERROR: database '{args.dbfile}' already exists")
-                sys.exit(2)
-            initialize_db(args.dbfile)
-        case 'compress':
-            if not os.path.isfile(args.dbfile):
-                print(f"ERROR: database '{args.dbfile}' not found")
-                sys.exit(2)
-            db = create_connection(args.dbfile)
-            cleanup_db(db)
-        case 'upgrade':
-            if not os.path.isfile(args.dbfile):
-                print(f"ERROR: database '{args.dbfile}' not found")
-                sys.exit(2)
-            upgrade_db(args.dbfile)
-        case _:
-            print("ERROR: no or unknown action specified")
+    if args.action == 'create':
+        if os.path.isfile(args.dbfile):
+            print(f"ERROR: database '{args.dbfile}' already exists")
             sys.exit(2)
+        initialize_db(args.dbfile)
+    elif args.action == 'compress':
+        if not os.path.isfile(args.dbfile):
+            print(f"ERROR: database '{args.dbfile}' not found")
+            sys.exit(2)
+        db = create_connection(args.dbfile)
+        cleanup_db(db)
+    elif args.action == 'upgrade':
+        if not os.path.isfile(args.dbfile):
+            print(f"ERROR: database '{args.dbfile}' not found")
+            sys.exit(2)
+        upgrade_db(args.dbfile)
+    else:
+        print("ERROR: no or unknown action specified")
+        sys.exit(2)
 
 
 if __name__ == '__main__':
