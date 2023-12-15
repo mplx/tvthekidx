@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# TVThe(k)Idx
+# Copyright (c) 2021-2023 developer@mplx.eu
+
 import sqlite3
 import base64
 import datetime
@@ -125,6 +128,30 @@ def initialize_db(db_file):
     execute_sql(conn, SQL)
 
     return conn
+
+
+def upgrade_db(db_file):
+    verbose("Opening database...", 3)
+    conn = create_connection(db_file)
+
+    verbose("Getting database version...", 3)
+    SQL = "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+    cur = execute_sql(conn, SQL)
+    sysval = cur.fetchone()
+    if sysval is None:
+        verbose("Creating settings table...", 3)
+        SQL = 'CREATE TABLE "settings" ("dbkey" TEXT, "value_int" INTEGER, "value_str" TEXT, PRIMARY KEY("dbkey"))'
+        execute_sql(conn, SQL, None, True)
+        SQL = 'INSERT INTO "settings" ("dbkey", "value_int", "value_str") VALUES ("dbversion", 1, NULL)'
+        execute_sql(conn, SQL)
+        conn.commit()
+    SQL = "SELECT value_int FROM settings WHERE dbkey='dbversion'"
+    cur = execute_sql(conn, SQL)
+    DBVERSION = cur.fetchone()[0]
+    verbose("Database version " + str(DBVERSION) + " found", 2)
+
+    if DBVERSION == 1:
+        verbose("Database up-to-date", 1)
 
 
 def initialize_tmdb(apikey):
@@ -788,13 +815,16 @@ def indexer(args):
         print("ERROR: currently only type movies supported")
         sys.exit(2)
 
+    if not os.path.isfile(args.dbfile):
+        print(f"ERROR: database '{args.dbfile}' not found")
+        sys.exit(2)
+
     db = initialize_db(args.dbfile)
     movie, search = initialize_tmdb(args.tmdbApiKey)
 
     scanDir(db, args.collection, args.libPath, args.recursiveSearch)
     scanMovies(db, search)
     scanActors(db, movie)
-    cleanup_db(db)
 
 
 def exporter(args):
@@ -803,7 +833,7 @@ def exporter(args):
         collection = args.collectionStr.split(",")
 
     if not os.path.isfile(args.dbfile):
-        print(f"ERROR: database '{args.databaseFile}' not found")
+        print(f"ERROR: database '{args.dbfile}' not found")
         sys.exit(2)
 
     db = create_connection(args.dbfile)
@@ -815,6 +845,29 @@ def exporter(args):
         if not args.skipActors:
             writeActorsDetail(db, f, collection)
         writeFooter(f)
+
+
+def dbtools(args):
+    match args.action:
+        case 'create':
+            if os.path.isfile(args.dbfile):
+                print(f"ERROR: database '{args.dbfile}' already exists")
+                sys.exit(2)
+            initialize_db(args.dbfile)
+        case 'compress':
+            if not os.path.isfile(args.dbfile):
+                print(f"ERROR: database '{args.dbfile}' not found")
+                sys.exit(2)
+            db = create_connection(args.dbfile)
+            cleanup_db(db)
+        case 'upgrade':
+            if not os.path.isfile(args.dbfile):
+                print(f"ERROR: database '{args.dbfile}' not found")
+                sys.exit(2)
+            upgrade_db(args.dbfile)
+        case _:
+            print("ERROR: no or unknown action specified")
+            sys.exit(2)
 
 
 if __name__ == '__main__':
@@ -843,6 +896,11 @@ if __name__ == '__main__':
     exporterparser.add_argument('--collection', '-c', action='store', dest='collectionStr', default=None, help='comma-separated list of collections')
     exporterparser.add_argument('--skip-actors', action='store_true', dest='skipActors', help='do not include actors section')
     exporterparser.add_argument('--skip-header', action='store_true', dest='skipHeader', help='do not include header with top and new sections')
+
+    exporterparser = subparsers.add_parser('database', help='database tools')
+    exporterparser.set_defaults(func=dbtools)
+    exporterparser.add_argument('--database', '-d', action='store', dest='dbfile', default='tvthek.db', help='TVthekIdx database')
+    exporterparser.add_argument('--action', '-a', action='store', dest='action', default=None, help='create/compress/upgrade')
 
     args = parser.parse_args()
 
