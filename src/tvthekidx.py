@@ -21,6 +21,7 @@ from tmdbv3api import TMDb
 from tmdbv3api import Movie
 from tmdbv3api import Search
 
+import ffmpeg
 
 VERBOSITY_LEVEL = 1
 UNKNOWN_IGNORE = True
@@ -124,6 +125,8 @@ def initialize_db(db_file):
         verbose("Connecting database...", 2)
         conn = create_connection(db_file)
 
+    upgrade_db(db_file)
+
     SQL = "PRAGMA foreign_keys = ON"
     execute_sql(conn, SQL)
 
@@ -150,7 +153,23 @@ def upgrade_db(db_file):
     DBVERSION = cur.fetchone()[0]
     verbose("Database version " + str(DBVERSION) + " found", 2)
 
+    " ffmpeg probe "
     if DBVERSION == 1:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+        SQL = 'ALTER TABLE files ADD COLUMN width INTEGER'
+        execute_sql(conn, SQL, None, True)
+        SQL = 'ALTER TABLE files ADD COLUMN height INTEGER'
+        execute_sql(conn, SQL, None, True)
+        SQL = 'ALTER TABLE files ADD COLUMN duration REAL'
+        execute_sql(conn, SQL, None, True)
+        SQL = 'ALTER TABLE files ADD COLUMN codec TEXT'
+        execute_sql(conn, SQL, None, True)
+        SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
+        execute_sql(conn, SQL, None, True)
+
+    "up-to-date"
+    if DBVERSION == 2:
         verbose("Database up-to-date", 1)
 
 
@@ -216,6 +235,8 @@ def addFileToDb(db, collection, filename, relpath):
     entry = cur.fetchone()
     if entry is None:
         execute_sql(db, insertSQL, (collection, filename, relpath))
+        return True
+    return entry
 
 
 def updateFileMeta(db, filename, attributes):
@@ -227,7 +248,7 @@ def updateFileMeta(db, filename, attributes):
     else:
         parameters = []
         updateSQL = "UPDATE FILES SET "
-        for attr in ('size', 'ctime', 'mtime'):
+        for attr in ('size', 'ctime', 'mtime', 'width', 'height', 'duration', 'codec'):
             if attributes[attr] != entry[attr]:
                 updateSQL = updateSQL + attr + " = ?, "
                 parameters.append(attributes[attr])
@@ -235,7 +256,7 @@ def updateFileMeta(db, filename, attributes):
         if len(parameters) > 0:
             parameters.append(filename)
             parameters.append(attributes['collection'])
-            result = execute_sql(db, updateSQL, parameters)
+            result = execute_sql(db, updateSQL, parameters, True)
             return result
         else:
             return False
@@ -295,8 +316,16 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         size = os.path.getsize(m)
         ctime = os.path.getctime(m)
         mtime = os.path.getmtime(m)
-        addFileToDb(db, collection, f, relPath)
-        updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime})
+        entry = addFileToDb(db, collection, f, relPath)
+        if ((entry is True) or (size != entry["size"]) or (entry["duration"] is None)):
+            verbose(f"Updating meta data for {f}", 2)
+            probe = ffmpeg.probe(m)
+            video_streams = [stream for stream in probe["streams"] if stream["codec_type"] == "video"]
+            width = video_streams[0]['width']
+            height = video_streams[0]['height']
+            duration = float(video_streams[0]['duration'])
+            codec = video_streams[0]['codec_name']
+            updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime, "width": width, "height": height, "duration": duration, "codec": codec})
     verbose(f"{idx} files found")
 
     " check if all database files exist "
@@ -441,7 +470,7 @@ def getCast(db, mid, limit=None):
 
 def getCollections(db, mid):
     cur = db.cursor()
-    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime FROM files WHERE movie_id = ? ORDER BY collection ASC"
+    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration FROM files WHERE movie_id = ? ORDER BY collection ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
 
@@ -703,11 +732,28 @@ def writeMoviesDetail(db, f, collection):
                 collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{col['filename']}\">{colstr}</a> "
             else:
                 collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
-                metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">{colsize}</span> "
+                metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">🗎 {colsize}</span> "
                 if col['ctime'] > col['added']:
                     metadatastr = metadatastr + f"<span class=\"badge bg-info\" title=\"Datei (Datenbank {dbtime})\">{fctime}</span> "
                 else:
                     metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Datei\">{fctime}</span> "
+                if col["duration"] is not None:
+                    duration = "{:.0f}".format(col['duration'] / 60)
+                    metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Länge\">🕐 {duration} min</span> "
+                if col["width"] is not None:
+                    if col["width"] >= 1920 or col["height"] >= 1080:
+                        metadatastr = metadatastr + f"<span class=\"badge bg-success\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
+                    elif col["width"] >= 1280 or col["height"] >= 720:
+                        metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
+                    else:
+                        metadatastr = metadatastr + f"<span class=\"badge bg-warning\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
+                if col["codec"] is not None:
+                    if col["codec"] == "hevc":
+                        metadatastr = metadatastr + "<span class=\"badge bg-success\" title=\"Codec\">H.265</span> "
+                    elif col["codec"] == "h264":
+                        metadatastr = metadatastr + "<span class=\"badge bg-secondary\" title=\"Codec\">H.264</span> "
+                    else:
+                        metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Codec\">{col['codec']}</span> "
                 if m["tmdb_id"] is not None:
                     metadatastr = metadatastr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"TheMovieDatabase={tmdbid} DbMovieID={movieid} DbFileID={fileid}\" href=\"https://www.themoviedb.org/movie/{tmdbid}\">TMDB</a> "
                 else:
