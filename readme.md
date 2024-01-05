@@ -4,6 +4,8 @@ Generates an index of tvthek downloaded content
 
 ## Usage (version 0.4.x)
 
+### Prerequisites
+
 Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www.themoviedb.org/documentation/api).
 
 ### from binary (windows)
@@ -15,7 +17,7 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 `tvthekidx.exe -v database -d tvthek.db -a create`
 
 3. run the indexer
-`tvthekidx.exe -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p x:\TVThek --add-unknown --recursive`
+`tvthekidx.exe -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p x:\TVThek --recursive`
 (insert you TMDB API key instead of `APIKEY`)
 
 4. generate the html file
@@ -39,7 +41,7 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 `./tvthekidx -v database -d tvthek.db -a create`
 
 4. run the indexer
-`./tvthekidx -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --add-unknown --recursive`
+`./tvthekidx -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --recursive`
 (insert you TMDB API key instead of `APIKEY`)
 
 5. generate the html file
@@ -60,20 +62,20 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 
 2. create database
 
-`python tvthekidx.py -v database -d tvthek.db -a create`
+`python tvthekidx/tvthekidx.py -v database -d tvthek.db -a create`
 
 4. run the indexer
-`python tvthekidx.py -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --add-unknown --recursive`
+`python tvthekidx/tvthekidx.py -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --recursive`
 (insert you TMDB API key instead of `APIKEY`)
 
 5. generate the html file
-`python tvthekidx.py export -t "TVthek" -d tvthek.db -c "TVthek" -o tvthek.html`
+`python tvthekidx/tvthekidx.py export -t "TVthek" -d tvthek.db -c "TVthek" -o tvthek.html`
 
 6. if you add or remove content run steps 3 + 4 again
 
 7. occasionally run the database maintainance
 
-`python tvthekidx.py -v database -d tvthek.db -a compress`
+`python tvthekidx/tvthekidx.py -v database -d tvthek.db -a compress`
 
 ## global arguments
 
@@ -88,7 +90,6 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 - `-t`, `--type` movies or tvshows (different API on TMDB; currently only movies supported)
 - `-c`, `--collection` collection
 - `-r`, `--recursive` recursive search
-- `-a`, `--add-unknown` add unknown
 
 ## `export` arguments
 

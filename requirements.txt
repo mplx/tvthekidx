@@ -2,5 +2,5 @@ tmdbv3api==1.7.7
 ffmpeg-python==0.2.0
 moviepy==1.0.3
 pillow==10.2.0
-pyinstaller==5.10.1
-pyinstaller-hooks-contrib==2023.2
+#pyinstaller==5.10.1
+#pyinstaller-hooks-contrib==2023.2

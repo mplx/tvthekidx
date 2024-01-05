@@ -3,8 +3,8 @@
 block_cipher = None
 
 a = Analysis(
-    ['src/tvthekidx.py'],
-    pathex=[],
+    ['tvthekidx/tvthekidx.py'],
+    pathex=['./tvthekidx'],
     binaries=[],
     datas=[],
     hiddenimports=[ "tmdbv3api", "ffmpeg-python" ],
