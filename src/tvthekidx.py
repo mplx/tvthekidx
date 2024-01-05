@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 # TVThe(k)Idx
-# Copyright (c) 2021-2023 developer@mplx.eu
+# Copyright (c) 2021-2024 developer@mplx.eu
 
 import sqlite3
 import base64
 import datetime
+import io
 import glob
 import os
 import re
@@ -22,6 +23,8 @@ from tmdbv3api import Movie
 from tmdbv3api import Search
 
 import ffmpeg
+from moviepy.editor import VideoFileClip
+from PIL import Image
 
 VERBOSITY_LEVEL = 1
 UNKNOWN_IGNORE = True
@@ -165,10 +168,12 @@ def upgrade_db(db_file):
         execute_sql(conn, SQL, None, True)
         SQL = 'ALTER TABLE files ADD COLUMN codec TEXT'
         execute_sql(conn, SQL, None, True)
+        SQL = 'ALTER TABLE files ADD COLUMN screenshot BLOB'
+        execute_sql(conn, SQL, None, True)
         SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
         execute_sql(conn, SQL, None, True)
 
-    "up-to-date"
+    " up-to-date "
     if DBVERSION == 2:
         verbose("Database up-to-date", 1)
 
@@ -184,6 +189,32 @@ def initialize_tmdb(apikey):
     search = Search()
 
     return movie, search
+
+
+def get_screenshot(video_path, time):
+    clip = VideoFileClip(video_path)
+    screenshot = clip.get_frame(time)
+    clip.reader.close()
+    clip.audio.reader.close_proc()
+
+    image = Image.fromarray(screenshot)
+    image.thumbnail((600, 600))
+
+    img_byte_array = io.BytesIO()
+    image.save(img_byte_array, format='JPEG', quality=25, optimize=True)
+    img_byte_array = img_byte_array.getvalue()
+
+    return img_byte_array
+
+
+def store_screenshot(db, collection, m, filename, relpath, time = 500):
+    try:
+        screenshot = get_screenshot(m, time)
+        updateSQL = "UPDATE files SET screenshot = ? WHERE collection = ? AND filename = ? AND relpath = ?"
+        cur = execute_sql(db, updateSQL, (sqlite3.Binary(screenshot), collection, filename, relpath))
+        return True
+    except:
+        return False
 
 
 def actor_get_popularity(actor):
@@ -230,7 +261,7 @@ def query_movie(search, name, year):
 
 def addFileToDb(db, collection, filename, relpath):
     insertSQL = "INSERT INTO files (collection, filename, relpath, movie_id) VALUES (?, ?, ?, NULL)"
-    selectSQL = "SELECT * FROM files WHERE collection=? AND filename = ? AND relpath = ?"
+    selectSQL = "SELECT * FROM files WHERE collection = ? AND filename = ? AND relpath = ?"
     cur = execute_sql(db, selectSQL, (collection, filename, relpath))
     entry = cur.fetchone()
     if entry is None:
@@ -249,7 +280,7 @@ def updateFileMeta(db, filename, attributes):
         parameters = []
         updateSQL = "UPDATE FILES SET "
         for attr in ('size', 'ctime', 'mtime', 'width', 'height', 'duration', 'codec'):
-            if attributes[attr] != entry[attr]:
+            if attributes.get(attr) != None and attributes[attr] != entry[attr]:
                 updateSQL = updateSQL + attr + " = ?, "
                 parameters.append(attributes[attr])
         updateSQL = updateSQL + "lastmod=(cast(strftime('%s','now') as int)) WHERE filename = ? AND collection = ?"
@@ -319,13 +350,23 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         entry = addFileToDb(db, collection, f, relPath)
         if ((entry is True) or (size != entry["size"]) or (entry["duration"] is None)):
             verbose(f"Updating meta data for {f}", 2)
-            probe = ffmpeg.probe(m)
-            video_streams = [stream for stream in probe["streams"] if stream["codec_type"] == "video"]
-            width = video_streams[0]['width']
-            height = video_streams[0]['height']
-            duration = float(video_streams[0]['duration'])
-            codec = video_streams[0]['codec_name']
-            updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime, "width": width, "height": height, "duration": duration, "codec": codec})
+            try:
+                probe = ffmpeg.probe(m)
+                video_streams = [stream for stream in probe["streams"] if stream["codec_type"] == "video"]
+                width = video_streams[0]['width']
+                height = video_streams[0]['height']
+                duration = float(video_streams[0]['duration'])
+                codec = video_streams[0]['codec_name']
+                updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime, "width": width, "height": height, "duration": duration, "codec": codec})
+            except:
+                verbose("ffprobe failed for " + m, 2)
+                updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime})
+        if ((entry is True) or (entry["screenshot"] is None)):
+            verbose(f"Grabbing screenshot for {f}", 2)
+            result = store_screenshot(db, collection, m, f, relPath)
+            if result is False:
+                verbose(f"Grabbing screenshot for {f} failed", 2)
+
     verbose(f"{idx} files found")
 
     " check if all database files exist "
@@ -470,7 +511,7 @@ def getCast(db, mid, limit=None):
 
 def getCollections(db, mid):
     cur = db.cursor()
-    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration FROM files WHERE movie_id = ? ORDER BY collection ASC"
+    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, screenshot FROM files WHERE movie_id = ? ORDER BY collection ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
 
@@ -496,6 +537,9 @@ def writeHeader(f, title="TVThek Index"):
     f.write('       .row-striped:nth-child(even) { background-color: #ffffff; }\n')
     f.write('       h1,h2,h3,h4 { padding-top: 54px; margin-top: -54px; }\n')
     f.write('       body { padding-top: 54px; }\n')
+    f.write('       .tooltip-inner { min-width: 650px; }\n')
+    f.write('       .tooltip.show { opacity:1 !important; }\n')
+    f.write('       .tooltip-inner { background-color: #606060; }\n')
     f.write('   </style\n')
     f.write('</head>\n')
     f.write('<body>\n')
@@ -600,6 +644,11 @@ def writeFooter(f):
             const search = document.querySelector('#searchInput')
             search.focus()
           }
+        })
+        // Enable Bootstrap tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
         })
     </script>\n''')
     f.write('</body>\n')
@@ -731,7 +780,11 @@ def writeMoviesDetail(db, f, collection):
             if fileDetail != 1:
                 collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{col['filename']}\">{colstr}</a> "
             else:
-                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']}\" href=\"{col['filename']}\">{colstr}</a> "
+                filetitlehtml = f"{col['filename']}"
+                if col["screenshot"]:
+                    screenshot = base64.b64encode(col['screenshot']).decode('ascii')
+                    filetitlehtml = f"{col['filename']}<br /><img alt='Screencapture' src='data:image/png;base64,{screenshot}' />"
+                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" data-container=\"body\" style=\"text-decoration:none\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\" title=\"{filetitlehtml}\" href=\"{col['filename']}\">{colstr}</a> "
                 metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">🗎 {colsize}</span> "
                 if col['ctime'] > col['added']:
                     metadatastr = metadatastr + f"<span class=\"badge bg-info\" title=\"Datei (Datenbank {dbtime})\">{fctime}</span> "
