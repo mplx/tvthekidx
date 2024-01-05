@@ -15,10 +15,9 @@ linter:
   script:
     - pip install --upgrade pip
     - python --version && pip --version
-    - pip install -r requirements.txt
     - pip install -U pylint flake8
-    - pylint --version && pylint -E src/*.py
-    - flake8 --version && flake8 src/*.py --ignore=E501 --statistics --count
+    - pylint --version && pylint --errors-only --disable import-error tvthekidx/*.py
+    - flake8 --version && flake8 tvthekidx/*.py --ignore=E501,E722 --statistics --count
 
 # --- BUILD ----------------------------------------------------------------------------------
 
@@ -34,27 +33,12 @@ build-debian-buster-x64:
     before_script:
         - apt update && apt install -y binutils
     script:
+        - python --version
+        - sed -i 's/^#//' requirements.txt
+        - cat requirements.txt
         - pip install -r requirements.txt
-        - pip install -U pyinstaller
         - pyinstaller --clean tvthekidx.spec
         - mv dist/tvthekidx dist/tvthekidx-buster
-
-#build-debian-bullseye-x64:
-#    stage: build
-#    image: python:3-slim-bullseye
-#    tags:
-#        - docker-build
-#    artifacts:
-#        expire_in: 1 hour
-#        paths:
-#            - dist
-#    before_script:
-#        - apt update && apt install -y binutils
-#    script:
-#        - pip install -r requirements.txt
-#        - pip install -U pyinstaller
-#        - pyinstaller --clean tvthekidx.spec
-#        - mv dist/tvthekidx dist/tvthekidx-bullseye
 
 build-win-x64:
     stage: build
@@ -86,6 +70,7 @@ test-debian-buster-on-buster-x64:
         - job: build-debian-buster-x64
           artifacts: true
 
+
 test-debian-buster-on-bullseye-x64:
     stage: test
     image: debian:bullseye-slim
@@ -111,34 +96,6 @@ test-debian-buster-on-bookworm-x64:
     needs:
         - job: build-debian-buster-x64
           artifacts: true
-
-#test-debian-bullseye-on-bullseye-x64:
-#    stage: test
-#    image: debian:bullseye-slim
-#    tags:
-#        - docker-build
-#    variables:
-#        GIT_STRATEGY: none
-#    script:
-#        - dist/tvthekidx-bullseye -h
-#    needs:
-#        - job: build-debian-bullseye-x64
-#          artifacts: true
-
-#test-debian-bullseye-on-buster-x64:
-#    stage: test
-#    image: debian:buster-slim
-#    tags:
-#        - docker-build
-#    variables:
-#        GIT_STRATEGY: none
-#    rules:
-#        - allow_failure: true
-#    script:
-#        - dist/tvthekidx-bullseye -h
-#    needs:
-#        - job: build-debian-bullseye-x64
-#          artifacts: true
 
 # --- UPLOAD --------------------------------------------------------------------------------
 

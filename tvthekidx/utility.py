@@ -5,14 +5,15 @@
 
 VERBOSITY_LEVEL = 1
 
-def verbose(text, level = 1):
+
+def verbose(text, level=1):
     global VERBOSITY_LEVEL
 
     if VERBOSITY_LEVEL >= level:
         print(f"[{level}] {text}")
 
 
-def setVerbosity(level = 1):
+def setVerbosity(level=1):
     global VERBOSITY_LEVEL
 
     VERBOSITY_LEVEL = level

@@ -106,7 +106,7 @@ def updateFileMeta(db, filename, attributes):
         parameters = []
         updateSQL = "UPDATE FILES SET "
         for attr in ('size', 'ctime', 'mtime', 'width', 'height', 'duration', 'codec'):
-            if attributes.get(attr) != None and attributes[attr] != entry[attr]:
+            if attributes.get(attr) is not None and attributes[attr] != entry[attr]:
                 updateSQL = updateSQL + attr + " = ?, "
                 parameters.append(attributes[attr])
         updateSQL = updateSQL + "lastmod=(cast(strftime('%s','now') as int)) WHERE filename = ? AND collection = ?"

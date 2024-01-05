@@ -317,11 +317,11 @@ def lookupMovie(db, search, title, year):
         return entry['id']
 
 
-def store_screenshot(db, collection, m, filename, relpath, time = 500):
+def store_screenshot(db, collection, m, filename, relpath, time=500):
     try:
         screenshot = files.get_screenshot(m, time)
         updateSQL = "UPDATE files SET screenshot = ? WHERE collection = ? AND filename = ? AND relpath = ?"
-        cur = execute_sql(db, updateSQL, (sqlite3.Binary(screenshot), collection, filename, relpath))
+        execute_sql(db, updateSQL, (sqlite3.Binary(screenshot), collection, filename, relpath))
         return True
     except:
         return False
