@@ -1,6 +1,12 @@
 # TVthe(k)Index
 
-Generates an index of tvthek downloaded content
+Generates an index of tvthek/mediathek downloaded content and queries [TMDB](https://www.themoviedb.org/) for the meta data
+
+![TVthe(k)Index Logo](docs/assets/tvthekidx.png)
+
+## Example
+
+[![TVthe(k)Index Logo](docs/assets/sample.png)](https://peach.blender.org/)
 
 ## Usage (version 0.4.x)
 
