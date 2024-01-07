@@ -1,0 +1,65 @@
+[project]
+name = "tvthekidx"
+dynamic = ["version"]
+description = "maintain an index of downloaded tvthek content"
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["tvthek", "movies"]
+authors = [
+  {name = "mplx", email = "developer@mplx.eu" }
+]
+
+requires-python = ">=3.8"
+
+# https://pypi.org/classifiers/
+classifiers = [
+  #   4 - Beta
+  #   5 - Production/Stable
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3 :: Only",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
+  "Topic :: Multimedia :: Video",
+  "Topic :: Utilities"
+]
+
+dependencies = [
+  "tmdbv3api",
+  "moviepy",
+  "pillow",
+  "ffmpeg-python"
+]
+
+# https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use
+# https://packaging.python.org/specifications/core-metadata/#home-page-optional
+[project.urls]
+"Homepage" = "https://gitlab.mplx.eu/scripts/tvthekidx"
+"Source" = "https://gitlab.mplx.eu/scripts/tvthekidx"
+
+[project.scripts]
+tvthekidx = "tvthekidx.tvthekidx:main"
+
+[build-system]
+requires = [
+  "setuptools>=64",
+  "setuptools-scm>=8.0",
+  "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = [ "tvthekidx" ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+version_file = "./src/tvthekidx/_version.py"

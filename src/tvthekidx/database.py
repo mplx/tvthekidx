@@ -3,9 +3,9 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2024 developer@mplx.eu
 
-import files
-import online
-from utility import verbose
+from . import files
+from . import online
+from . utility import verbose
 
 import sqlite3
 from sqlite3 import Error

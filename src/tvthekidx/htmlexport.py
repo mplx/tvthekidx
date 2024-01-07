@@ -3,7 +3,7 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2024 developer@mplx.eu
 
-import database
+from . import database
 
 import datetime
 import base64

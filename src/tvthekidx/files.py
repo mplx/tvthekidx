@@ -3,8 +3,8 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2024 developer@mplx.eu
 
-from database import execute_sql, addFileToDb, store_screenshot
-from utility import verbose
+from . database import execute_sql, addFileToDb, store_screenshot
+from . utility import verbose
 
 import os
 import io

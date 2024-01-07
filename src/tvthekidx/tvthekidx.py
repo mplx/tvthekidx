@@ -4,11 +4,12 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2024 developer@mplx.eu
 
-import files
-import online
-import database
-import htmlexport
-from utility import verbose, getVerbosity, setVerbosity
+from . import files
+from . import online
+from . import database
+from . import htmlexport
+from . utility import verbose, getVerbosity, setVerbosity
+from . _version import __version__
 
 import os
 import sys
@@ -17,7 +18,7 @@ import argparse
 
 def indexer(args):
     if args.libType != "movies":
-        print("ERROR: currently only type 'movies' supported (different tmdb API)")
+        print("ERROR: currently only type 'movies' supported (tvshows require a different TMDB API)")
         sys.exit(2)
 
     if not os.path.isfile(args.dbfile):
@@ -74,7 +75,7 @@ def dbtools(args):
         sys.exit(2)
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(prog='tvthekidx', description='tvthek index')
     parser.add_argument('--quiet', '-q', action='store_true', dest='quiet', help='quiet (set verbose to 0)')
     parser.add_argument('--verbose', '-v', action='count', dest='verbose', default=0, help='verbosity level')
@@ -110,6 +111,7 @@ if __name__ == '__main__':
     if args.quiet:
         setVerbosity(0)
     else:
+        verbose("TVThe(k)Idx version " + __version__)
         setVerbosity(args.verbose + 1)
         verbose("Verbosity level: " + str(getVerbosity()), 2)
 

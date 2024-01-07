@@ -16,8 +16,8 @@ linter:
     - pip install --upgrade pip
     - python --version && pip --version
     - pip install -U pylint flake8
-    - pylint --version && pylint --errors-only --disable import-error tvthekidx/*.py
-    - flake8 --version && flake8 tvthekidx/*.py --ignore=E501,E722 --statistics --count
+    - pylint --version && pylint --errors-only --disable import-error src/tvthekidx/*.py
+    - flake8 --version && flake8 src/tvthekidx/*.py --ignore=E501,E722 --statistics --count
 
 # --- BUILD ----------------------------------------------------------------------------------
 

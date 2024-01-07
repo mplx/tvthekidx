@@ -4,7 +4,7 @@
 # Copyright (c) 2021-2024 developer@mplx.eu
 
 
-from utility import verbose
+from . utility import verbose
 
 from tmdbv3api import TMDb
 from tmdbv3api import Movie
