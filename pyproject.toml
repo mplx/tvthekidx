@@ -63,3 +63,6 @@ where = ["src"]
 
 [tool.setuptools_scm]
 version_file = "./src/tvthekidx/_version.py"
+
+[tool.distutils.egg_info]
+egg_base = "build"
