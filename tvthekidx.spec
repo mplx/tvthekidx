@@ -3,15 +3,15 @@
 block_cipher = None
 
 a = Analysis(
-    ['tvthekidx/tvthekidx.py'],
-    pathex=['./tvthekidx'],
+    [ 'tvthekidx.py' ],
+    pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[ "tmdbv3api", "ffmpeg-python" ],
+    hiddenimports=[ "tmdbv3api", "ipaddress" ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[ "tkinter", "_tkinter" ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

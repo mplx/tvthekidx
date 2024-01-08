@@ -1,23 +1,8 @@
 stages:
-  - lint
   - build
   - test
   - upload
   - release
-
-# --- LINT -----------------------------------------------------------------------------------
-
-linter:
-  stage: lint
-  image: python:3-slim-buster
-  tags:
-    - docker-build
-  script:
-    - pip install --upgrade pip
-    - python --version && pip --version
-    - pip install -U pylint flake8
-    - pylint --version && pylint --errors-only --disable import-error src/tvthekidx/*.py
-    - flake8 --version && flake8 src/tvthekidx/*.py --ignore=E501,E722 --statistics --count
 
 # --- BUILD ----------------------------------------------------------------------------------
 
@@ -30,13 +15,18 @@ build-debian-buster-x64:
         expire_in: 1 hour
         paths:
             - dist
+    variables:
+        GIT_DEPTH: 0
     before_script:
-        - apt update && apt install -y binutils
+        - apt update && apt install -y binutils git
+        - pip install --upgrade pip
+        - python --version && pip --version
     script:
-        - python --version
-        - sed -i 's/^#//' requirements.txt
-        - cat requirements.txt
-        - pip install -r requirements.txt
+        - git tag && git status
+        - pip install -r requirements.txt -r requirements-dev.txt
+        - pylint --version && pylint --errors-only --disable import-error src/tvthekidx/*.py
+        - flake8 --version && flake8 src/tvthekidx/*.py --ignore=E501,E722 --statistics --count
+        - mkdir build && python -m build
         - pyinstaller --clean tvthekidx.spec
         - mv dist/tvthekidx dist/tvthekidx-buster
 
@@ -48,11 +38,15 @@ build-win-x64:
     services:
         - name: docker:20.10.19-dind
           alias: docker
+    allow_failure: true
     artifacts:
         expire_in: 1 hour
         paths:
             - dist/win64/
+    variables:
+        GIT_DEPTH: 0
     script:
+        - ls -laih
         - docker run --rm -v "$(pwd):/src" ghcr.io/mplx/docker-pyinstaller:master-py3-win64
 
 # --- TEST -----------------------------------------------------------------------------------
@@ -69,7 +63,6 @@ test-debian-buster-on-buster-x64:
     needs:
         - job: build-debian-buster-x64
           artifacts: true
-
 
 test-debian-buster-on-bullseye-x64:
     stage: test
@@ -107,8 +100,8 @@ upload-artifacts:
     needs:
         - job: build-debian-buster-x64
           artifacts: true
-        - job: build-win-x64
-          artifacts: true
+#        - job: build-win-x64
+#          artifacts: true
         - job: test-debian-buster-on-buster-x64
           artifacts: false
     rules:
@@ -117,19 +110,38 @@ upload-artifacts:
         GIT_STRATEGY: none
         LINUX_AMD64_BINARY_BUILD: "tvthekidx-buster"
         LINUX_AMD64_BINARY: "tvthekidx"
-        WIN_AMD64_BINARY: "tvthekidx.exe"
+#        WIN_AMD64_BINARY: "tvthekidx.exe"
         PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${CI_PROJECT_NAME}/${CI_COMMIT_TAG}"
     script:
         - |
             echo Uploading binaries...
             curl --fail --silent --show-error --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file dist/tvthekidx-buster ${PACKAGE_REGISTRY_URL}/tvthekidx-debian-amd64
-            echo
-            curl --fail --silent --show-error --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file dist/win64/tvthekidx.exe ${PACKAGE_REGISTRY_URL}/tvthekidx-windows-amd64.exe
-            echo
+#            echo
+#            curl --fail --silent --show-error --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file dist/win64/tvthekidx.exe ${PACKAGE_REGISTRY_URL}/tvthekidx-windows-amd64.exe
+#            echo
 
 # --- RELEASE --------------------------------------------------------------------------------
 
-release:
+release-source:
+    stage: release
+    image: python:latest
+    tags:
+        - docker-deploy
+    needs:
+        - build-debian-buster-x64
+    rules:
+       - if: $CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9a-zA-Z.-]+))?$/
+    variables:
+        GIT_DEPTH: 0
+    script:
+        - pip install build twine
+        - python -m build
+        - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
+
+#release-pypi:
+#    stage: release
+
+release-binary:
     stage: release
     image: registry.gitlab.com/gitlab-org/release-cli:latest
     tags:
@@ -137,19 +149,19 @@ release:
     needs:
         - job: upload-artifacts
     rules:
-        - if: $CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9a-zA-Z.-]+))?$/
+       - if: $CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9a-zA-Z.-]+))?$/
     variables:
         GIT_STRATEGY: none
         LINUX_AMD64_BINARY: "tvthekidx-debian-amd64"
-        WIN_AMD64_BINARY: "tvthekidx-windows-amd64.exe"
+#        WIN_AMD64_BINARY: "tvthekidx-windows-amd64.exe"
         PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${CI_PROJECT_NAME}/${CI_COMMIT_TAG}"
-#    release:
-#        name: 'Release $CI_COMMIT_TAG'
-#        description: 'Release $CI_COMMIT_TAG'
-#        tag_name: '$CI_COMMIT_TAG'
-#        ref: '$CI_COMMIT_TAG'
+    release:
+        name: 'Release $CI_COMMIT_TAG'
+        description: 'Release $CI_COMMIT_TAG'
+        tag_name: '$CI_COMMIT_TAG'
+        ref: '$CI_COMMIT_TAG'
     script:
       - |
         release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
-          --assets-link "{\"name\":\"${LINUX_AMD64_BINARY}\",\"url\":\"${PACKAGE_REGISTRY_URL}/${LINUX_AMD64_BINARY}\"}" \
-          --assets-link "{\"name\":\"${WIN_AMD64_BINARY}\",\"url\":\"${PACKAGE_REGISTRY_URL}/${WIN_AMD64_BINARY}\"}"
+          --assets-link "{\"name\":\"${LINUX_AMD64_BINARY}\",\"url\":\"${PACKAGE_REGISTRY_URL}/${LINUX_AMD64_BINARY}\"}"
+#          --assets-link "{\"name\":\"${WIN_AMD64_BINARY}\",\"url\":\"${PACKAGE_REGISTRY_URL}/${WIN_AMD64_BINARY}\"}"

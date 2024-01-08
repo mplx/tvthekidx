@@ -1,0 +1,4 @@
+build
+pyinstaller==6.3.0
+setuptools>=64
+setuptools_scm>=8.0

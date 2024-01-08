@@ -1,6 +1,5 @@
 [project]
 name = "tvthekidx"
-dynamic = ["version"]
 description = "maintain an index of downloaded tvthek content"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -10,6 +9,12 @@ authors = [
 ]
 
 requires-python = ">=3.8"
+
+dynamic = [
+  "version",
+  "dependencies",
+  "optional-dependencies"
+]
 
 # https://pypi.org/classifiers/
 classifiers = [
@@ -31,13 +36,6 @@ classifiers = [
   "Topic :: Utilities"
 ]
 
-dependencies = [
-  "tmdbv3api",
-  "moviepy",
-  "pillow",
-  "ffmpeg-python"
-]
-
 # https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use
 # https://packaging.python.org/specifications/core-metadata/#home-page-optional
 [project.urls]
@@ -45,7 +43,7 @@ dependencies = [
 "Source" = "https://gitlab.mplx.eu/scripts/tvthekidx"
 
 [project.scripts]
-tvthekidx = "tvthekidx.tvthekidx:main"
+tvthekidx = "tvthekidx.cli:main"
 
 [build-system]
 requires = [
@@ -60,6 +58,10 @@ py-modules = [ "tvthekidx" ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+optional-dependencies = {dev = { file = ["requirements-dev.txt"] }}
 
 [tool.setuptools_scm]
 version_file = "./src/tvthekidx/_version.py"
