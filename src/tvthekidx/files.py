@@ -53,6 +53,7 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         ctime = os.path.getctime(m)
         mtime = os.path.getmtime(m)
         entry = addFileToDb(db, collection, f, relPath)
+        forceScreenshot = False
         if ((entry is True) or (size != entry["size"]) or (entry["duration"] is None)):
             verbose(f"Updating meta data for {f}", 2)
             try:
@@ -62,11 +63,15 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
                 height = video_streams[0]['height']
                 duration = float(video_streams[0]['duration'])
                 codec = video_streams[0]['codec_name']
-                updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime, "width": width, "height": height, "duration": duration, "codec": codec})
+                result = updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime, "width": width, "height": height, "duration": duration, "codec": codec, 'screenshot': None})
+                forceScreenshot = True
             except:
                 verbose("ffprobe failed for " + m, 2)
-                updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime})
-        if ((entry is True) or (entry["screenshot"] is None)):
+                result = updateFileMeta(db, f, {"collection": collection, "size": size, "ctime": ctime, "mtime": mtime, "width": None, "height": None, "duration": None, "codec": None, 'screenshot': None})
+                forceScreenshot = True
+            if result is False:
+                verbose(f"Update meta data for {f} failed", 2)
+        if ((entry is True) or (forceScreenshot is True) or (entry["screenshot"] is None)):
             verbose(f"Grabbing screenshot for {f}", 2)
             result = store_screenshot(db, collection, m, f, relPath)
             if result is False:
@@ -105,10 +110,13 @@ def updateFileMeta(db, filename, attributes):
     else:
         parameters = []
         updateSQL = "UPDATE FILES SET "
-        for attr in ('size', 'ctime', 'mtime', 'width', 'height', 'duration', 'codec'):
+        for attr in ('size', 'ctime', 'mtime', 'width', 'height', 'duration', 'codec', 'screenshot'):
             if attributes.get(attr) is not None and attributes[attr] != entry[attr]:
-                updateSQL = updateSQL + attr + " = ?, "
-                parameters.append(attributes[attr])
+                if attributes[attr] is None:
+                    updateSQL = updateSQL + attr + " = NULL, "
+                else:
+                    updateSQL = updateSQL + attr + " = ?, "
+                    parameters.append(attributes[attr])
         updateSQL = updateSQL + "lastmod=(cast(strftime('%s','now') as int)) WHERE filename = ? AND collection = ?"
         if len(parameters) > 0:
             parameters.append(filename)

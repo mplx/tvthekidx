@@ -44,6 +44,7 @@ def exporter(args):
 
     db = database.create_connection(args.dbfile)
     with open(args.outputFile, 'w', encoding='utf8') as f:
+        verbose(f"Exporting to {args.outputFile}...", 1)
         htmlexport.writeHeader(f, args.title)
         if not args.skipHeader:
             htmlexport.writeMoviesImageTitle(db, f, collection)
