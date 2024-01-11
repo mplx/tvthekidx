@@ -48,7 +48,7 @@ def exporter(args):
         htmlexport.writeHeader(f, args.title)
         if not args.skipHeader:
             htmlexport.writeMoviesImageTitle(db, f, collection)
-        htmlexport.writeMoviesDetail(db, f, collection)
+        htmlexport.writeMoviesDetail(db, f, collection, args.targetURL)
         if not args.skipActors:
             htmlexport.writeActorsDetail(db, f, collection)
         htmlexport.writeFooter(f)
@@ -101,6 +101,7 @@ def main():
     exporterparser.add_argument('--collection', '-c', action='store', dest='collectionStr', default=None, help='comma-separated list of collections')
     exporterparser.add_argument('--skip-actors', action='store_true', dest='skipActors', help='do not include actors section')
     exporterparser.add_argument('--skip-header', action='store_true', dest='skipHeader', help='do not include header with top and new sections')
+    exporterparser.add_argument('--url', action='store', dest='targetURL', default='./', help='video hyperlink prefix')
 
     exporterparser = subparsers.add_parser('database', help='database tools')
     exporterparser.set_defaults(func=dbtools)

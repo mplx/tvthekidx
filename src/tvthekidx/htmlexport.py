@@ -212,7 +212,7 @@ def movieRatingColor(score):
     return scorecolor
 
 
-def writeMoviesDetail(db, f, collection):
+def writeMoviesDetail(db, f, collection, urlPrefix):
     f.write('<h3 id="index">Verzeichnis</h3>')
 
     whereSql = ""
@@ -264,13 +264,13 @@ def writeMoviesDetail(db, f, collection):
             movieid = m["id"]
             fileid = col["id"]
             if fileDetail != 1:
-                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{col['filename']}\">{colstr}</a> "
+                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
             else:
                 filetitlehtml = f"{col['filename']}"
                 if col["screenshot"]:
                     screenshot = base64.b64encode(col['screenshot']).decode('ascii')
                     filetitlehtml = f"{col['filename']}<br /><img alt='Screencapture' src='data:image/png;base64,{screenshot}' />"
-                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" data-container=\"body\" style=\"text-decoration:none\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\" title=\"{filetitlehtml}\" href=\"{col['filename']}\">{colstr}</a> "
+                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" data-container=\"body\" style=\"text-decoration:none\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\" title=\"{filetitlehtml}\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
                 metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">🗎 {colsize}</span> "
                 if col['ctime'] > col['added']:
                     metadatastr = metadatastr + f"<span class=\"badge bg-info\" title=\"Datei (Datenbank {dbtime})\">{fctime}</span> "

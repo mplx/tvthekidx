@@ -105,6 +105,7 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 - `-o`, `--output` output file
 - `--skip-actors` do not include actors section
 - `--skip-header` do not include header with top and new sections
+- `--url` video hyperlink prefix
 
 ## `database` arguments
 
