@@ -184,7 +184,7 @@ def writeMoviesImageTitle(db, f, collection):
 
     f.write('<h3 id="new">Neu</h3>')
 
-    orderBy = "added DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
+    orderBy = "strftime('%Y%m%d', added, 'unixepoch') DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
     movies = database.getMovies(db, whereSql, orderBy, "0,84")
     f.write('<section id="new1">\n')
     for m in movies:
