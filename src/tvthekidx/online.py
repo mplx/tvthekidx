@@ -13,11 +13,11 @@ from tmdbv3api import Search
 from urllib.request import urlopen
 
 
-def initialize_tmdb(apikey):
+def initialize_tmdb(apikey, language="de"):
     tmdb = TMDb()
     tmdb.api_key = apikey
 
-    tmdb.language = 'de'
+    tmdb.language = language
     tmdb.debug = True
 
     movie = Movie()
@@ -64,7 +64,7 @@ def query_cast(movie, tmdbid):
 
 def query_movie(search, name, year):
     verbose(f'Querying movie online: {name} {year}', 2)
-    query = {"language": "de", "query": name, "year": year}
+    query = {"query": name, "year": year}
     results = search.movies(query)
     if isinstance(results, list):
         if len(results) == 0:
