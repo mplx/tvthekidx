@@ -30,7 +30,7 @@ def indexer(args):
 
     files.scanDir(db, args.collection, args.libPath, args.recursiveSearch)
     database.scanMovies(db, search)
-    database.scanActors(db, movie)
+    database.scanCredits(db, movie)
 
 
 def exporter(args):

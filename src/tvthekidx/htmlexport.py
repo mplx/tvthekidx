@@ -36,8 +36,8 @@ def writeHeader(f, title="TVThek Index"):
     f.write('           <ul class="navbar-nav me-auto mb-2 mb-lg-0">')
     f.write('               <li class="nav-item"><a class="nav-link" href="#new">Neu</a></li>')
     f.write('               <li class="nav-item"><a class="nav-link" href="#top">Top</a></li>')
-    f.write('               <li class="nav-item"><a class="nav-link" href="#index">Verzeichnis</a></li>')
-    f.write('               <li class="nav-item"><a class="nav-link" href="#actor">Darsteller</a></li>')
+    f.write('               <li class="nav-item"><a class="nav-link" href="#index">Medien</a></li>')
+    f.write('               <li class="nav-item"><a class="nav-link" href="#person">Menschen</a></li>')
     f.write('           </ul>')
     f.write('           <form class="d-flex" role="search" onsubmit="return false;">')
     f.write('               <div id="spinner" class="spinner-grow text-secondary" role="status"><span class="visually-hidden"></span></div>')
@@ -67,16 +67,16 @@ def writeFooter(f):
                 document.getElementById("top2").removeAttribute("hidden");
                 document.getElementById("new").removeAttribute("hidden");
                 document.getElementById("new1").removeAttribute("hidden");
-                document.getElementById("actor").removeAttribute("hidden");
-                document.getElementById("actors").removeAttribute("hidden");
+                document.getElementById("person").removeAttribute("hidden");
+                document.getElementById("persons").removeAttribute("hidden");
             } else {
                 document.getElementById("top").setAttribute("hidden", "hidden");
                 document.getElementById("top1").setAttribute("hidden", "hidden");
                 document.getElementById("top2").setAttribute("hidden", "hidden");
                 document.getElementById("new").setAttribute("hidden", "hidden");
                 document.getElementById("new1").setAttribute("hidden", "hidden");
-                document.getElementById("actor").setAttribute("hidden", "hidden");
-                document.getElementById("actors").setAttribute("hidden", "hidden");
+                document.getElementById("person").setAttribute("hidden", "hidden");
+                document.getElementById("persons").setAttribute("hidden", "hidden");
             }
 
             TVAPP.cntFound = 0;
@@ -220,7 +220,7 @@ def movieRatingColor(score):
 
 
 def writeMoviesDetail(db, f, collection, urlPrefix):
-    f.write('<h3 id="index">Verzeichnis</h3>')
+    f.write('<h3 id="index">Medienverzeichnis</h3>')
 
     whereSql = ""
     fileDetail = 0
@@ -254,8 +254,11 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
             titleext = f" <span class='origtitle'>{title_orig}</span>"
         actors = ""
         cast = database.getCast(db, id, "0,15")
-        for actor in cast:
-            actors = actors + '<a href="#actor-' + str(actor['id']) + '" title="' + str(int(actor['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + actor['name'] + '</a> '
+        for person in cast:
+            actors = actors + '<a href="#person-' + str(person['id']) + '" title="' + str(int(person['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + person['name'] + '</a> '
+        crew = database.getCrew(db, id, "job='Director'", "0,15")
+        for person in crew:
+            actors = actors + '<a href="#person-' + str(person['id']) + '" title="Regie" style="text-decoration:none" class="badge bg-secondary">' + person['name'] + '</a> '
         metadatastr = ""
         collectionstr = ""
         collections = database.getCollections(db, id)
@@ -355,8 +358,8 @@ def writeActorsDetail(db, f, collection):
 
     actors = database.getActors(db, whereSql)
 
-    f.write('<h3 id="actor">Darsteller</h3>')
-    f.write('<section id="actors">')
+    f.write('<h3 id="person">Menschen</h3>')
+    f.write('<section id="persons">')
     i = 0
     total = len(actors)
     for a in actors:
@@ -381,7 +384,7 @@ def writeActorsDetail(db, f, collection):
             i = i + 1
             f.write(f"""
                     <div class="row row-striped p-3" data-search='["{name}"]'>
-                        <div class="col"><h4 id="actor-{id}">{name}</h4></div>
+                        <div class="col"><h4 id="person-{id}">{name}</h4></div>
                         <div class="col">{profilehtml}</div>
                         <div class="col">{popularityhtml}</div>
                         <div class="col-6"><div class="description">""")
@@ -393,5 +396,5 @@ def writeActorsDetail(db, f, collection):
                 scorecolor = movieRatingColor(m['score'])
                 f.write(f'<a href="#movie-{mid}" style="text-decoration:none" title="{year} / {score}%" class="badge bg-{scorecolor}">{title}</a> ')
             f.write("</div></div></div>")
-    f.write(f"{i}/{total} Schauspieler gelisted")
+    f.write(f"{i}/{total} Personen gelisted")
     f.write('\n</section>\n')

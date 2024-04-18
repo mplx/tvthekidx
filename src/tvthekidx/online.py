@@ -46,23 +46,36 @@ def query_cast(movie, tmdbid):
     # query actors
     verbose("Querying movie cast online...", 2)
     cast = []
+    crew = []
     try:
         results = movie.credits(tmdbid)
-        # parse result    
+        # parse result
         for c in results['cast']:
-            actor = {
+            person = {
                 "name": c['name'],
                 "photo": c['profile_path'],
                 "popularity": c['popularity'],
                 "tmdb_id": c['id'],
                 "profile": fetchPoster(c['profile_path'])
             }
-            cast.append(actor)
-        # sort by popularity
+            cast.append(person)
+        # parse result
+        for c in results['crew']:
+            person = {
+                "name": c['name'],
+                "photo": c['profile_path'],
+                "popularity": c['popularity'],
+                "tmdb_id": c['id'],
+                "profile": fetchPoster(c['profile_path']),
+                "job": c['job']
+            }
+            if (person['job'] == "Director"):
+                crew.append(person)
+        # sort cast by popularity
         cast.sort(key=actor_get_popularity, reverse=True)
     except:
         verbose(f'Error querying movie online: TMDBID={tmdbid}')
-    return cast
+    return cast, crew
 
 
 def query_movie(search, name, year):

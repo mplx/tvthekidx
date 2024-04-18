@@ -17,6 +17,9 @@ from PIL import Image
 
 def get_screenshot(video_path, time):
     clip = VideoFileClip(video_path)
+    length = clip.duration
+    if time > length:
+        time = int(length / 2)
     screenshot = clip.get_frame(time)
     clip.reader.close()
     clip.audio.reader.close_proc()

@@ -56,6 +56,7 @@ def cleanup_db(db):
         for o in obsolete:
             actorsUpdateSQL = "UPDATE actors_movies SET m_id = ? WHERE m_id = ?"
             actorsDeleteSQL = "DELETE FROM actors_movies WHERE m_id = ?"
+            crewDeleteSQL = "DELETE FROM crew_movies WHERE m_id = ?"
             filesUpdateSQL = "UPDATE files SET movie_id = ? WHERE movie_id = ?"
             cleanupSQL = "DELETE FROM movies WHERE id = ?"
             try:
@@ -63,6 +64,7 @@ def cleanup_db(db):
                 c.execute(actorsUpdateSQL, (master, o['id']))
             except Error:
                 cur = execute_sql(db, actorsDeleteSQL, (o['id'], ))
+                cur = execute_sql(db, crewDeleteSQL, (o['id'], ))
             cur = execute_sql(db, filesUpdateSQL, (master, o['id']))
             cur = execute_sql(db, cleanupSQL, (o['id'], ))
 
@@ -150,8 +152,17 @@ def upgrade_db(db_file):
         SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
         execute_sql(conn, SQL, None, True)
 
-    " up-to-date "
+    " crew "
     if DBVERSION == 2:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+        SQL = 'CREATE TABLE "crew_movies" ("a_id" INTEGER NOT NULL, "m_id" INTEGER NOT NULL, "job" TEXT, FOREIGN KEY("m_id") REFERENCES "movies"("id"), FOREIGN KEY("a_id") REFERENCES "actors"("id"), PRIMARY KEY("a_id","m_id"))'
+        execute_sql(conn, SQL, None, True)
+        SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
+        execute_sql(conn, SQL, None, True)
+
+    " up-to-date "
+    if DBVERSION == 3:
         verbose("Database up-to-date", 1)
 
 
@@ -177,6 +188,18 @@ def getCast(db, mid, limit=None):
     return cur.fetchall()
 
 
+def getCrew(db, mid, where=None, limit=None):
+    cur = db.cursor()
+    selectSQL = "SELECT a.*, c.job FROM crew_movies c JOIN actors a ON c.a_id = a.id JOIN movies m ON c.m_id = m.id WHERE (m.id = ?)"
+    if where:
+        selectSQL = f"{selectSQL} AND ({where})"
+    selectSQL = selectSQL + "ORDER BY a.popularity DESC"
+    if limit:
+        selectSQL = f"{selectSQL} LIMIT {limit}"
+    cur.execute(selectSQL, (mid, ))
+    return cur.fetchall()
+
+
 def getCollections(db, mid):
     cur = db.cursor()
     selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, screenshot FROM files WHERE movie_id = ? ORDER BY collection ASC"
@@ -189,6 +212,8 @@ def getActors(db, where=None, orderby="popularity DESC, name ASC"):
     selectSQL = "SELECT DISTINCT a.* FROM actors a"
     if where:
         selectSQL = f"{selectSQL} JOIN actors_movies am ON am.a_id=a.id JOIN movies m ON am.m_id=m.id JOIN files f ON f.movie_id = m.id WHERE {where}"
+        selectSQL = f"{selectSQL} UNION SELECT DISTINCT a.* FROM actors a"
+        selectSQL = f"{selectSQL} JOIN crew_movies cm ON cm.a_id=a.id JOIN movies m ON cm.m_id=m.id JOIN files f ON f.movie_id = m.id WHERE {where}"
     if orderby:
         selectSQL = f"{selectSQL} ORDER BY {orderby}"
     cur.execute(selectSQL)
@@ -197,8 +222,11 @@ def getActors(db, where=None, orderby="popularity DESC, name ASC"):
 
 def getMoviesByActor(db, aid):
     cur = db.cursor()
-    selectSQL = "SELECT m.id, m.title, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ? ORDER BY m.title COLLATE NOCASE ASC, m.year ASC"
-    cur.execute(selectSQL, (aid, ))
+    selectSQL = "SELECT m.id, m.title, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL += " UNION "
+    selectSQL += "SELECT m.id, m.title, m.score, m.year FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL += "ORDER BY m.title COLLATE NOCASE ASC, m.year ASC"
+    cur.execute(selectSQL, (aid, aid))
     return cur.fetchall()
 
 
@@ -266,16 +294,32 @@ def addActorToMovieDb(db, mid, aid):
     return True
 
 
-def scanActors(db, movie):
-    verbose("Scanning for actors...", 2)
-    selectSQL = "SELECT id, title, tmdb_id FROM movies WHERE tmdb_id IS NOT NULL AND NOT (id IN (SELECT DISTINCT m_id FROM actors_movies))"
+def addCrewToMovieDb(db, mid, aid, job):
+    selectSQL = "SELECT * FROM crew_movies WHERE a_id = ? AND m_id = ?"
+
+    cur = execute_sql(db, selectSQL, (aid, mid, ))
+    entry = cur.fetchone()
+
+    if entry is None:
+        insertSQL = "INSERT INTO crew_movies(a_id, m_id, job) VALUES (?, ?, ?)"
+        execute_sql(db, insertSQL, (aid, mid, job))
+
+    return True
+
+
+def scanCredits(db, movie):
+    verbose("Scanning for cast and crew...", 2)
+    selectSQL = "SELECT id, title, tmdb_id FROM movies WHERE tmdb_id IS NOT NULL AND NOT (id IN (SELECT DISTINCT m_id FROM actors_movies UNION SELECT DISTINCT m_id FROM crew_movies)) ORDER BY title ASC"
     cur = execute_sql(db, selectSQL)
     for row in cur.fetchall():
         verbose("Lookup cast for " + row['title'], 2)
-        cast = online.query_cast(movie, row['tmdb_id'])
-        for actor in cast:
-            aid = addActorToDb(db, actor)
+        cast, crew = online.query_cast(movie, row['tmdb_id'])
+        for person in cast:
+            aid = addActorToDb(db, person)
             addActorToMovieDb(db, row['id'], aid)
+        for person in crew:
+            aid = addActorToDb(db, person)
+            addCrewToMovieDb(db, row['id'], aid, person['job'])
         db.commit()
     return None
 
