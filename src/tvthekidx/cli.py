@@ -97,7 +97,7 @@ def main():
     exporterparser.set_defaults(func=exporter)
     exporterparser.add_argument('--database', '-d', action='store', dest='dbfile', default='tvthek.db', help='TVthekIdx database')
     exporterparser.add_argument('--title', '-t', action='store', dest='title', default='TVThek Index', help='page title')
-    exporterparser.add_argument('--output', '-o', action='store', dest='outputFile', default='tvthek.html', help='oputput file')
+    exporterparser.add_argument('--output', '-o', action='store', dest='outputFile', default='tvthek.html', help='output file')
     exporterparser.add_argument('--collection', '-c', action='store', dest='collectionStr', default=None, help='comma-separated list of collections')
     exporterparser.add_argument('--skip-actors', action='store_true', dest='skipActors', help='do not include actors section')
     exporterparser.add_argument('--skip-header', action='store_true', dest='skipHeader', help='do not include header with top and new sections')
