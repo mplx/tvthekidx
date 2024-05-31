@@ -176,7 +176,7 @@ def writeMoviesImageTitle(db, f, collection):
 
     if whereSql != "":
         whereSql = whereSql + " AND "
-    whereSql = whereSql + "NOT (poster IS NULL)"
+    whereSql = whereSql + "NOT (poster IS NULL) AND (score < 100)"
     orderBy = "score DESC, year DESC, m.title COLLATE NOCASE ASC"
 
     movies = database.getMovies(db, whereSql, orderBy, "0,60")
