@@ -154,7 +154,7 @@ def writeMoviesImageTitle(db, f, collection):
 
     orderBy = "strftime('%Y%m%d', added, 'unixepoch') DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
 
-    movies = database.getMovies(db, whereSql, orderBy, "0,84")
+    movies = database.getMovies(db, whereSql, orderBy, "0,45")
     f.write('<section id="new1">\n')
     for m in movies:
         id = m['id']
@@ -166,7 +166,7 @@ def writeMoviesImageTitle(db, f, collection):
         else:
             # poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
             poster = "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"
-        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"60\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
+        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"84\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
         f.write(f'{posterhtml}')
     f.write('\n</section>\n')
 
@@ -177,7 +177,7 @@ def writeMoviesImageTitle(db, f, collection):
     whereSql = whereSql + "NOT (poster IS NULL)"
     orderBy = "score DESC, year DESC, m.title COLLATE NOCASE ASC"
 
-    movies = database.getMovies(db, whereSql, orderBy, "0,24")
+    movies = database.getMovies(db, whereSql, orderBy, "0,60")
     f.write('<section id="top1">\n')
     for m in movies:
         id = m['id']
@@ -188,22 +188,7 @@ def writeMoviesImageTitle(db, f, collection):
             poster = base64.b64encode(m['poster']).decode('ascii')
         else:
             poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
-        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"105\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
-        f.write(f'{posterhtml}')
-    f.write('\n</section>\n')
-
-    movies = database.getMovies(db, whereSql, orderBy, "24,84")
-    f.write('<section id="top2">\n')
-    for m in movies:
-        id = m['id']
-        title = m['title']
-        year = m['year']
-        score = int(m['score'])
-        if m['poster']:
-            poster = base64.b64encode(m['poster']).decode('ascii')
-        else:
-            poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
-        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"60\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
+        posterhtml = f"<a href=\"#movie-{id}\"><img width=\"84\" title=\"{title} [{year}; {score}%]\" src=\"data:image/png;base64,{poster}\" /></a>"
         f.write(f'{posterhtml}')
     f.write('\n</section>\n')
 
