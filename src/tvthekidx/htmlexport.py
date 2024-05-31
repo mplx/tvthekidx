@@ -4,6 +4,7 @@
 # Copyright (c) 2021-2024 developer@mplx.eu
 
 from . import database
+from . _version import __version__
 
 import datetime
 import base64
@@ -16,6 +17,7 @@ def writeHeader(f, title="TVThek Index"):
     f.write('<head>\n')
     f.write('   <meta charset="utf-8"/>\n')
     f.write('   <meta name="viewport" content="width=device-width, initial-scale=1.0">\n')
+    f.write('   <meta name="generator" content="TVThe(k)Idx v' + __version__ + '" />\n')
     f.write('   <title>' + title + ' - ' + now.strftime("%d.%m.%Y") + '</title>\n')
     f.write('   <link type="text/css" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">\n')
     f.write('   <style>\n')
