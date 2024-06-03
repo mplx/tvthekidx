@@ -66,7 +66,6 @@ def writeFooter(f):
             if (searchTerm.length === 0) {
                 document.getElementById("top").removeAttribute("hidden");
                 document.getElementById("top1").removeAttribute("hidden");
-                document.getElementById("top2").removeAttribute("hidden");
                 document.getElementById("new").removeAttribute("hidden");
                 document.getElementById("new1").removeAttribute("hidden");
                 document.getElementById("person").removeAttribute("hidden");
@@ -74,7 +73,6 @@ def writeFooter(f):
             } else {
                 document.getElementById("top").setAttribute("hidden", "hidden");
                 document.getElementById("top1").setAttribute("hidden", "hidden");
-                document.getElementById("top2").setAttribute("hidden", "hidden");
                 document.getElementById("new").setAttribute("hidden", "hidden");
                 document.getElementById("new1").setAttribute("hidden", "hidden");
                 document.getElementById("person").setAttribute("hidden", "hidden");
