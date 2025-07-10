@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # TVThe(k)Idx
-# Copyright (c) 2021-2024 developer@mplx.eu
+# Copyright (c) 2021-2025 developer@mplx.eu
 
 from . import database
 from . _version import __version__
@@ -56,6 +56,16 @@ def writeFooter(f):
     f.write('</div>\n')
     f.write('<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>\n')
     f.write('''<script>
+        function copyToClipboard(text) {
+          navigator.clipboard.writeText(text)
+            .then(() => {
+              console.log(text);
+            })
+            .catch(err => {
+              console.error('Failed to copy: ', err);
+            });
+        }
+
         var TVAPP = {};
 
         function handleSearch() {
@@ -266,6 +276,7 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
                     screenshot = base64.b64encode(col['screenshot']).decode('ascii')
                     filetitlehtml = f"{col['filename']}<br /><img alt='Screencapture' src='data:image/png;base64,{screenshot}' />"
                 collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" data-container=\"body\" style=\"text-decoration:none\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\" title=\"{filetitlehtml}\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
+                metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Dateinamen kopieren\" onclick=\"copyToClipboard('{col['filename']}')\">📋</span> "
                 metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">🗎 {colsize}</span> "
                 if col['ctime'] > col['added']:
                     metadatastr = metadatastr + f"<span class=\"badge bg-info\" title=\"Datei (Datenbank {dbtime})\">{fctime}</span> "
