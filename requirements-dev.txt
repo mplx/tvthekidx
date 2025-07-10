@@ -1,4 +1,4 @@
-build
+build<0.10.0
 flake8
 pylint
 pyinstaller==6.3.0
