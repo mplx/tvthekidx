@@ -14,5 +14,4 @@ if [[ -f "${HOME}/.venv/${PROJECT}/bin/activate" ]]; then
 	source "${HOME}/.venv/${PROJECT}/bin/activate"
 else
 	echo "Error: cannot find venv '${PROJECT}'"
-	exit 1
 fi
