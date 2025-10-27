@@ -28,6 +28,8 @@ def writeHeader(f, title="TVThek Index"):
     f.write('       .tooltip-inner { min-width: 650px; }\n')
     f.write('       .tooltip.show { opacity:1 !important; }\n')
     f.write('       .tooltip-inner { background-color: #606060; }\n')
+    f.write('       .origtitle { font-size: 0.5em; }\n')
+    #f.write('       .row {   outline: 1px dashed red; } .col, [class^="col-"] {   outline: 1px dashed blue;   background-color: rgba(0, 123, 255, 0.1); }\n') # debug
     f.write('   </style\n')
     f.write('</head>\n')
     f.write('<body>\n')
@@ -246,16 +248,15 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
             posterhtml = "&nbsp;"
         titleext = ""
         if m["title_orig"] != m['title']:
-            titleext = f" <span class='origtitle'>{title_orig}</span>"
-        actors = ""
+            titleext = f" <span class='origtitle'>({title_orig})</span>"
+        actors = directors = ""
         cast = database.getCast(db, id, "0,15")
         for person in cast:
             actors = actors + '<a href="#person-' + str(person['id']) + '" title="' + str(int(person['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + person['name'] + '</a> '
         crew = database.getCrew(db, id, "job='Director'", "0,15")
         for person in crew:
-            actors = actors + '<a href="#person-' + str(person['id']) + '" title="Regie" style="text-decoration:none" class="badge bg-secondary">' + person['name'] + '</a> '
-        metadatastr = ""
-        collectionstr = ""
+            directors = directors + '<a href="#person-' + str(person['id']) + '" title="Regie" style="text-decoration:none" class="badge bg-secondary">' + person['name'] + '</a> '
+        collectionstr = combinedstr = metadatastr = ""
         collections = database.getCollections(db, id)
         for col in collections:
             if col['collection'] is not None:
@@ -304,25 +305,33 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
                 else:
                     metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"DbMovieID={movieid} DbFileID={fileid}\">ID</span> "
             metadatastr = metadatastr + "<br />"
-        copyselector = ''  # '<div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault"></div>'
+            combinedstr = combinedstr + collectionstr + metadatastr
+            collectionstr = metadatastr = "" # diryt hack to get combinedstr working; replaces collectionstr+metadatastr in future
         if fileDetail == 1:
             collectionstr = f"<dt>Bibliothek</dt><dd>{collectionstr}</dd>"
             metadatastr = f"<dt>Details</dt><dd>{metadatastr}</dd>"
         else:
             collectionstr = f"<dt>Bibliotheken</dt><dd>{collectionstr}</dd>"
             metadatastr = ""
+        if description:
+            descriptionhtml = f"<p style=\"hyphens: auto; text-align: justify;\">{description}</p>"
+        else:
+            descriptionhtml = ""
+        if titleext:
+            titlecombined = title + titleext
+        else:
+            titlecombined = title
+        datastringhtml = f"<p><span class=\"badge bg-secondary\">{year}</span> <span class=\"badge bg-{scorecolor}\">{score}</span> {directors} {actors}</p>"
         f.write(f"""
                 <div class="row row-striped p-3" data-search='["{title}"]'>
-                    <div class="col" style="hyphens: auto;"><h3 id="movie-{id}">{title}</h3>{titleext}{copyselector}</div>
-                    <div class="col">{posterhtml}</div>
-                    <div class="col">
-                        <dl>
-                            <dt>Jahr</dt><dd><span class="badge bg-secondary">{year}</span></dd>
-                            <dt>Wertung</dt><dd><span class="badge bg-{scorecolor}">{score}</span></dd>
-                            {collectionstr}{metadatastr}
-                        </dl>
+                    <div class="col-2">{posterhtml}</div>
+                    <div class="col-10">
+                        <h3 id="movie-{id}">{titlecombined}</h3>
+                        <div class="description">
+                            {datastringhtml}{descriptionhtml}
+                            <p>{combinedstr}</p>
+                        </div>
                     </div>
-                    <div class="col-6"><div class="description"><p style="hyphens: auto; text-align: justify;">{description}</p><p>{actors}</p></div></div>
             </div>""")
     cntmovies = len(movies)
     if cntmovies == 1:
