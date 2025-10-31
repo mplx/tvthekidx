@@ -29,7 +29,14 @@ def writeHeader(f, title="TVThek Index"):
     f.write('       .tooltip.show { opacity:1 !important; }\n')
     f.write('       .tooltip-inner { background-color: #606060; }\n')
     f.write('       .origtitle { font-size: 0.5em; }\n')
+    f.write('       .fixed-badge        { display: inline-block; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }\n')
+    f.write('       .fixed-badge.fw-80  { width:  80px; }\n')
+    f.write('       .fixed-badge.fw-100 { width: 100px; }\n')
+    f.write('       .fixed-badge.fw-120 { width: 120px; }\n')
+    f.write('       .fixed-badge.fw-160 { width: 160px; }\n')
     #f.write('       .row { outline: 1px dashed red; } .col, [class^="col-"] { outline: 1px dashed blue; background-color: rgba(0, 123, 255, 0.1); }\n') # debug bootstrap
+    f.write('       @keyframes spinOnce { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }\n')
+    f.write('       .spin-once { animation: spinOnce 0.6s linear; display: inline-block; }\n')
     f.write('   </style\n')
     f.write('</head>\n')
     f.write('<body>\n')
@@ -58,14 +65,21 @@ def writeFooter(f):
     f.write('</div>\n')
     f.write('<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>\n')
     f.write('''<script>
-        function copyToClipboard(text) {
-          navigator.clipboard.writeText(text)
-            .then(() => {
-              console.log(text);
-            })
-            .catch(err => {
-              console.error('Failed to copy: ', err);
-            });
+        function copyToClipboard(text, event) {
+            navigator.clipboard.writeText(text)
+                .then(() => {
+                    console.log(text);
+                    const el = event.target;
+                    el.classList.remove('spin-once');
+                    void el.offsetWidth;
+                    el.classList.add('spin-once');
+                    el.addEventListener('animationend', () => {
+                        el.classList.remove('spin-once');
+                    }, { once: true });
+                })
+                .catch(err => {
+                console.error('Failed to copy: ', err);
+                });
         }
 
         var TVAPP = {};
@@ -271,14 +285,14 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
             movieid = m["id"]
             fileid = col["id"]
             if fileDetail != 1:
-                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
+                collectionstr = collectionstr + f"<a class=\"badge bg-secondary fixed-badge fw-160\" style=\"text-decoration:none\" title=\"{col['filename']} [{colsize}]\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
             else:
                 filetitlehtml = f"{col['filename']}"
                 if col["screenshot"]:
                     screenshot = base64.b64encode(col['screenshot']).decode('ascii')
                     filetitlehtml = f"{col['filename']}<br /><img alt='Screencapture' src='data:image/png;base64,{screenshot}' />"
-                collectionstr = collectionstr + f"<a class=\"badge bg-secondary\" data-container=\"body\" style=\"text-decoration:none\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\" title=\"{filetitlehtml}\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
-                metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Dateinamen kopieren\" onclick=\"copyToClipboard('{col['filename']}')\">📋</span> "
+                collectionstr = collectionstr + f"<a class=\"badge bg-secondary fixed-badge fw-160\" data-container=\"body\" style=\"text-decoration:none\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\" title=\"{filetitlehtml}\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
+                copyhtmlstr = f"<span class=\"badge bg-secondary\" title=\"Dateinamen kopieren\" onclick=\"copyToClipboard('{col['filename']}', event)\"><span class='icon'>📋</span></span> "
                 metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">🗎 {colsize}</span> "
                 if col['ctime'] > col['added']:
                     metadatastr = metadatastr + f"<span class=\"badge bg-info\" title=\"Datei (Datenbank {dbtime})\">{fctime}</span> "
@@ -289,11 +303,11 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
                     metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Länge\">🕐 {duration} min</span> "
                 if col["width"] is not None:
                     if col["width"] >= 1920 or col["height"] >= 1080:
-                        metadatastr = metadatastr + f"<span class=\"badge bg-success\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
+                        metadatastr = metadatastr + f"<span class=\"badge bg-success fixed-badge fw-100\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
                     elif col["width"] >= 1280 or col["height"] >= 720:
-                        metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
+                        metadatastr = metadatastr + f"<span class=\"badge bg-secondary fixed-badge fw-100\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
                     else:
-                        metadatastr = metadatastr + f"<span class=\"badge bg-warning\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
+                        metadatastr = metadatastr + f"<span class=\"badge bg-warning fixed-badge fw-100\" title=\"Auflösung\">🖵 {col['width']}x{col['height']}</span> "
                 if col["codec"] is not None:
                     if col["codec"] == "hevc":
                         metadatastr = metadatastr + "<span class=\"badge bg-success\" title=\"Codec\">H.265</span> "
@@ -306,7 +320,7 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
                 else:
                     metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"DbMovieID={movieid} DbFileID={fileid}\">ID</span> "
             metadatastr = metadatastr + "<br />"
-            combinedstr = combinedstr + collectionstr + metadatastr
+            combinedstr = combinedstr + copyhtmlstr + collectionstr + metadatastr
             collectionstr = metadatastr = "" # diryt hack to get combinedstr working; replaces collectionstr+metadatastr in future
         if fileDetail == 1:
             collectionstr = f"<dt>Bibliothek</dt><dd>{collectionstr}</dd>"
