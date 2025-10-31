@@ -29,7 +29,7 @@ def writeHeader(f, title="TVThek Index"):
     f.write('       .tooltip.show { opacity:1 !important; }\n')
     f.write('       .tooltip-inner { background-color: #606060; }\n')
     f.write('       .origtitle { font-size: 0.5em; }\n')
-    #f.write('       .row {   outline: 1px dashed red; } .col, [class^="col-"] {   outline: 1px dashed blue;   background-color: rgba(0, 123, 255, 0.1); }\n') # debug
+    #f.write('       .row { outline: 1px dashed red; } .col, [class^="col-"] { outline: 1px dashed blue; background-color: rgba(0, 123, 255, 0.1); }\n') # debug bootstrap
     f.write('   </style\n')
     f.write('</head>\n')
     f.write('<body>\n')
@@ -233,6 +233,7 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
     for m in movies:
         id = m['id']
         title = m['title']
+        title_escaped = m['title'].replace("'", "&#39;").replace('"', "&quot;")
         title_orig = m['title_orig']
         description = m['description'] if m['description'] else ""
         if len(description) > 800:
@@ -323,7 +324,7 @@ def writeMoviesDetail(db, f, collection, urlPrefix):
             titlecombined = title
         datastringhtml = f"<p><span class=\"badge bg-secondary\">{year}</span> <span class=\"badge bg-{scorecolor}\">{score}</span> {directors} {actors}</p>"
         f.write(f"""
-                <div class="row row-striped p-3" data-search='["{title}"]'>
+                <div class="row row-striped p-3" data-search='[{title_escaped}]'>
                     <div class="col-2">{posterhtml}</div>
                     <div class="col-10">
                         <h3 id="movie-{id}">{titlecombined}</h3>
