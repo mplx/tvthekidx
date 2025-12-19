@@ -5,3 +5,5 @@ dist/
 eggs/
 *.egg*
 _version.py
+.ropeproject
+.vscode
