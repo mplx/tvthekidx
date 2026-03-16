@@ -3,16 +3,28 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2024 developer@mplx.eu
 
-from . database import execute_sql, addFileToDb, store_screenshot, tag_add_by_filename
-from . utility import verbose
+from .database import execute_sql, addFileToDb
+from .tags import tag_add_by_filename
+from .utility import verbose
 
 import os
 import io
 import glob
+import sqlite3
 
 import ffmpeg
 from moviepy.editor import VideoFileClip
 from PIL import Image
+
+
+def store_screenshot(db, collection, m, filename, relpath, time=500):
+    try:
+        screenshot = get_screenshot(m, time)
+        updateSQL = "UPDATE files SET screenshot = ? WHERE collection = ? AND filename = ? AND relpath = ?"
+        execute_sql(db, updateSQL, (sqlite3.Binary(screenshot), collection, filename, relpath))
+        return True
+    except:
+        return False
 
 
 def get_screenshot(video_path, time):

@@ -3,7 +3,7 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2025 developer@mplx.eu
 
-from . import database
+from . import database, tags
 from . utility import include_image
 from . _version import __version__
 
@@ -552,7 +552,7 @@ def writeTagsDetail(db, f, collection):
             whereSql = whereSql + f"(collection='{col}') OR "
         whereSql = whereSql[0:-4] + ")"
 
-    tags = database.tag_list(db)
+    tags_list = tags.tag_list(db)
 
     f.write('<h3 id="tag">Tags</h3>')
     f.write('<section id="tags">')
@@ -560,11 +560,11 @@ def writeTagsDetail(db, f, collection):
     tcnt = 0
     mcnt = 0
 
-    for t in tags:
+    for t in tags_list:
         tcnt = tcnt + 1
         tagname = t['tag']
         tagid = t['id']
-        movies = database.getMoviesByTagid(db, tagid, whereSql)
+        movies = tags.getMoviesByTagid(db, tagid, whereSql)
         if movies:
             f.write(f"""
                 <div class="row row-striped p-3" data-search='["{tagname}"]'>
