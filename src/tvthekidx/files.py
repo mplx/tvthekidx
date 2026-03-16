@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # TVThe(k)Idx
-# Copyright (c) 2021-2024 developer@mplx.eu
+# Copyright (c) 2021-2026 developer@mplx.eu
 
 from .database import execute_sql, addFileToDb
 from .tags import tag_add_by_filename
