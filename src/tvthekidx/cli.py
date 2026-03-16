@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 
 # TVThe(k)Idx
-# Copyright (c) 2021-2025 developer@mplx.eu
+# Copyright (c) 2021-2026 developer@mplx.eu
 
 import argparse
 import os
 import re
 import sys
 
-from . import database, files, htmlexport, online, tags
+from . import database, export, files, online, tags
 from ._version import __version__
 from .utility import getVerbosity, setVerbosity, verbose
 
 
-def indexer(args):
+def indexer(args, remaining=None):
     if args.libType != "movies":
         print(
             "ERROR: currently only type 'movies' supported (tvshows require a different TMDB API)"
@@ -33,29 +33,20 @@ def indexer(args):
     database.scanCredits(db, movie)
 
 
-def exporter(args):
-    collection = None
-    if args.collectionStr:
-        collection = args.collectionStr.split(",")
+def exporter(args, remaining):
+    collection = args.collectionStr.split(",") if args.collectionStr else None
 
     if not os.path.isfile(args.dbfile):
         print(f"ERROR: database '{args.dbfile}' not found")
         sys.exit(2)
 
     db = database.create_connection(args.dbfile)
-    with open(args.outputFile, "w", encoding="utf8") as f:
-        verbose(f"Exporting to {args.outputFile}...", 1)
-        htmlexport.writeHeader(f, args.title)
-        if not args.skipHeader:
-            htmlexport.writeMoviesImageTitle(db, f, collection, args.gfxmode)
-        htmlexport.writeMoviesDetail(db, f, collection, args.gfxmode, args.targetURL)
-        if not args.skipActors:
-            htmlexport.writeActorsDetail(db, f, collection, args.gfxmode)
-        htmlexport.writeTagsDetail(db, f, collection)
-        htmlexport.writeFooter(f)
+    plugin = export.load_exporter(args.format)
+    plugin_args = plugin.parse_args(remaining)
+    plugin.export(db, collection, args, plugin_args)
 
 
-def dbtools(args):
+def dbtools(args, remaining=None):
     if args.action == "create":
         if os.path.isfile(args.dbfile):
             print(f"ERROR: database '{args.dbfile}' already exists")
@@ -77,7 +68,7 @@ def dbtools(args):
         sys.exit(2)
 
 
-def tagging(args):
+def tagging(args, remaining=None):
     if not os.path.isfile(args.dbfile):
         print(f"ERROR: database '{args.dbfile}' not found")
         sys.exit(2)
@@ -129,13 +120,8 @@ def main():
     exporterparser = subparsers.add_parser("export", help="export tvthekidx content")
     exporterparser.set_defaults(func=exporter)
     exporterparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
-    exporterparser.add_argument("--title", "-t", action="store", dest="title", default="TVThek Index", help="page title")
-    exporterparser.add_argument("--output", "-o", action="store", dest="outputFile", default="tvthek.html", help="output file")
     exporterparser.add_argument("--collection", "-c", action="store", dest="collectionStr", default=None, help="comma-separated list of collections")
-    exporterparser.add_argument("--skip-actors", action="store_true", dest="skipActors", help="do not include actors section")
-    exporterparser.add_argument("--skip-header", action="store_true", dest="skipHeader", help="do not include header with top and new sections")
-    exporterparser.add_argument("--graphics", action="store", dest="gfxmode", choices=["embed", "reference", "disable"], default="embed", help="embed or reference graphics")
-    exporterparser.add_argument("--url", action="store", dest="targetURL", default="./", help="video hyperlink prefix")
+    exporterparser.add_argument("--format", "-f", action="store", dest="format", default="html", help="export plugin name")
 
     exporterparser = subparsers.add_parser("database", help="database tools")
     exporterparser.set_defaults(func=dbtools)
@@ -150,7 +136,7 @@ def main():
     exporterparser.add_argument("--regex", "-r", action="store", dest="regex", default=None, help="regular expression")
     exporterparser.add_argument("--all", action="store_true", dest="allTags", help="delete all tags (requires --action delete)")
 
-    args = parser.parse_args()
+    args, remaining = parser.parse_known_args()
 
     if args.quiet:
         setVerbosity(0)
@@ -159,4 +145,4 @@ def main():
         setVerbosity(args.verbose + 1)
         verbose("Verbosity level: " + str(getVerbosity()), 2)
 
-    args.func(args)
+    args.func(args, remaining)

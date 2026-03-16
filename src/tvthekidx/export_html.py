@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 
 # TVThe(k)Idx
-# Copyright (c) 2021-2025 developer@mplx.eu
+# Copyright (c) 2021-2026 developer@mplx.eu
 
-from . import database, tags
-from . utility import include_image
-from . _version import __version__
-
+import argparse
 import datetime
 import base64
 import os
+
+from . import database, tags
+from .utility import include_image, verbose
+from ._version import __version__
 
 
 def helprow(f, key_html, desc):
@@ -588,3 +589,30 @@ def writeTagsDetail(db, f, collection):
         f.write(f"Keine Medien gefunden.")
 
     f.write('\n</section>\n')
+
+
+# --- Plugin interface ---
+
+def parse_args(remaining):
+    parser = argparse.ArgumentParser(prog="tvthekidx export --format html", add_help=False)
+    parser.add_argument("--output", "-o", dest="outputFile", default="tvthek.html", help="output file")
+    parser.add_argument("--title", "-t", dest="title", default="TVThek Index", help="page title")
+    parser.add_argument("--skip-actors", action="store_true", dest="skipActors")
+    parser.add_argument("--skip-header", action="store_true", dest="skipHeader")
+    parser.add_argument("--graphics", dest="gfxmode", choices=["embed", "reference", "disable"], default="embed")
+    parser.add_argument("--url", dest="targetURL", default="./")
+    plugin_args, _ = parser.parse_known_args(remaining)
+    return plugin_args
+
+
+def export(db, collection, args, plugin_args):
+    with open(plugin_args.outputFile, "w", encoding="utf8") as f:
+        verbose(f"Exporting to {plugin_args.outputFile}...", 1)
+        writeHeader(f, plugin_args.title)
+        if not plugin_args.skipHeader:
+            writeMoviesImageTitle(db, f, collection, plugin_args.gfxmode)
+        writeMoviesDetail(db, f, collection, plugin_args.gfxmode, plugin_args.targetURL)
+        if not plugin_args.skipActors:
+            writeActorsDetail(db, f, collection, plugin_args.gfxmode)
+        writeTagsDetail(db, f, collection)
+        writeFooter(f)
