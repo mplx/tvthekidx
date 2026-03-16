@@ -3,7 +3,7 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2024 developer@mplx.eu
 
-from . database import execute_sql, addFileToDb, store_screenshot
+from . database import execute_sql, addFileToDb, store_screenshot, tag_add_by_filename
 from . utility import verbose
 
 import os
@@ -56,6 +56,8 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         ctime = os.path.getctime(m)
         mtime = os.path.getmtime(m)
         entry = addFileToDb(db, collection, f, relPath)
+        if entry is True:
+            tag_add_by_filename(db, f)
         forceScreenshot = False
         if ((entry is True) or (size != entry["size"]) or (entry["duration"] is None)):
             verbose(f"Updating meta data for {f}", 2)

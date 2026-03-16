@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
 # TVThe(k)Idx
-# Copyright (c) 2021-2024 developer@mplx.eu
+# Copyright (c) 2021-2025 developer@mplx.eu
 
-from . import files
 from . import online
-from . utility import verbose
+from . utility import verbose, normalize_string
 
 import sqlite3
 from sqlite3 import Error
@@ -161,8 +160,42 @@ def upgrade_db(db_file):
         SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
         execute_sql(conn, SQL, None, True)
 
-    " up-to-date "
+    " tags "
     if DBVERSION == 3:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+        SQL = 'CREATE TABLE "tags" ("id" INTEGER, "tag" TEXT NOT NULL UNIQUE, PRIMARY KEY("id" AUTOINCREMENT))'
+        execute_sql(conn, SQL, None, True)
+        SQL = 'CREATE TABLE "files_tags" ("f_id" INTEGER, "t_id" INTEGER, PRIMARY KEY("f_id","t_id"), FOREIGN KEY("t_id") REFERENCES "tags"("id"), FOREIGN KEY("f_id") REFERENCES "files"("id"))'
+        execute_sql(conn, SQL, None, True)
+        SQL = 'CREATE TABLE "tags_regex" ("id" INTEGER, "t_id" INTEGER, "regex" TEXT, FOREIGN KEY("t_id") REFERENCES "tags"("id"), PRIMARY KEY("id"))'
+        execute_sql(conn, SQL, None, True)
+        SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
+        execute_sql(conn, SQL, None, True)
+
+    " title normalization "
+    if DBVERSION == 4:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+
+        SQL = "ALTER TABLE movies ADD COLUMN title_normalized TEXT"
+        execute_sql(conn, SQL, None, True)
+
+        SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
+        execute_sql(conn, SQL, None, True)
+
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title FROM movies")
+        rows = cursor.fetchall()
+        for row in rows:
+            row_id, title = row
+            normalized = normalize_string(title if title else "")
+            cursor.execute("UPDATE movies SET title_normalized = ? WHERE id = ?", (normalized, row_id))
+        conn.commit()
+        cursor.close()
+
+    " up-to-date "
+    if DBVERSION == 5:
         verbose("Database up-to-date", 1)
 
 
@@ -222,10 +255,10 @@ def getActors(db, where=None, orderby="popularity DESC, name ASC"):
 
 def getMoviesByActor(db, aid):
     cur = db.cursor()
-    selectSQL = "SELECT m.id, m.title, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL = "SELECT m.id, m.title, m.title_normalized, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
     selectSQL += " UNION "
-    selectSQL += "SELECT m.id, m.title, m.score, m.year FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
-    selectSQL += "ORDER BY m.title COLLATE NOCASE ASC, m.year ASC"
+    selectSQL += "SELECT m.id, m.title, m.title_normalized, m.score, m.year FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL += "ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
     cur.execute(selectSQL, (aid, aid))
     return cur.fetchall()
 
@@ -262,8 +295,8 @@ def addFileToDb(db, collection, filename, relpath):
 
 
 def addMovieToDb(db, movie):
-    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, year, description, popularity, score, poster) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster']))
+    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, poster) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], normalize_string(movie['title']), movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster']))
     return result.lastrowid
 
 
@@ -363,9 +396,157 @@ def lookupMovie(db, search, title, year):
 
 def store_screenshot(db, collection, m, filename, relpath, time=500):
     try:
+        from . import files
         screenshot = files.get_screenshot(m, time)
         updateSQL = "UPDATE files SET screenshot = ? WHERE collection = ? AND filename = ? AND relpath = ?"
         execute_sql(db, updateSQL, (sqlite3.Binary(screenshot), collection, filename, relpath))
         return True
     except:
         return False
+
+
+def tag_list(db, includeRegex=False, where=None):
+    if includeRegex:
+        selectSQL = "SELECT t.id, t.tag AS tag, r.regex AS regex FROM tags t, tags_regex r WHERE t.id = r.t_id"
+    else:
+        selectSQL = "SELECT t.id, t.tag AS tag FROM tags t WHERE 1 = 1"
+    if where:
+        selectSQL = f"{selectSQL} AND {where}"
+    if includeRegex:
+        selectSQL = f"{selectSQL} ORDER BY t.tag ASC, r.regex ASC"
+    else:
+        selectSQL = f"{selectSQL} ORDER BY t.tag ASC"
+    cur = execute_sql(db, selectSQL)
+    return cur.fetchall() if cur else []
+
+
+def tag_add(db, tag, regex):
+    tagid = regexid = None
+
+    selectSQL = "SELECT id FROM tags WHERE tag = ?"
+    cur = execute_sql(db, selectSQL, (tag, ))
+    if cur:
+        entry = cur.fetchone()
+        if entry:
+            tagid = entry[0]
+
+    if tagid is None:
+        insertSQL = "INSERT INTO tags(tag) VALUES (?)"
+        result = execute_sql(db, insertSQL, (tag, ), True)
+        tagid = result.lastrowid
+
+    if tagid:
+        selectSQL = "SELECT id FROM tags_regex WHERE t_id = ? AND regex = ?"
+        cur = execute_sql(db, selectSQL, (tagid, regex))
+        if cur:
+            entry = cur.fetchone()
+            if entry:
+                regexid = entry[0]
+
+    if not regexid:
+        insertSQL = "INSERT INTO tags_regex(t_id, regex) VALUES (?, ?)"
+        result = execute_sql(db, insertSQL, (tagid, regex), True)
+        regexid = result.lastrowid
+
+    return tagid, regexid
+
+
+def tag_delete(db, tag, regex = None):
+    tagid = None
+    result = False
+
+    selectSQL = "SELECT id FROM tags WHERE tag = ?"
+    cur = execute_sql(db, selectSQL, (tag, ))
+    if cur:
+        entry = cur.fetchone()
+        if entry:
+            tagid = entry[0]
+
+    if tagid:
+        try:
+            deleteSQL = 'DELETE FROM files_tags WHERE t_id = ?'
+            result = execute_sql(db, deleteSQL, (tagid, ))
+
+            if regex:
+                deleteSQL = 'DELETE FROM tags_regex WHERE t_id = ? AND regex = ?'
+                result = execute_sql(db, deleteSQL, (tagid, regex))
+            else:
+                deleteSQL = 'DELETE FROM tags_regex WHERE t_id = ?'
+                result = execute_sql(db, deleteSQL, (tagid, ))
+                deleteSQL = 'DELETE FROM tags WHERE id = ?'
+                result = execute_sql(db, deleteSQL, (tagid, ), True)
+
+            result = True
+        except sqlite3.Error as e:
+            print(f"An error occurred: {e}")
+
+    return result
+
+
+def tag_scanfiles(db, tag):
+    if isinstance(tag, int):
+        selectSQL = "SELECT t.id AS id, t.tag AS tag, r.regex AS regex FROM tags t JOIN tags_regex r ON t.id = r.t_id WHERE t.id = ?"
+    else:
+        selectSQL = "SELECT t.id AS id, t.tag AS tag, r.regex AS regex FROM tags t JOIN tags_regex r ON t.id = r.t_id WHERE t.tag = ?"
+    regex_rows = list(execute_sql(db, selectSQL, (tag,)))
+    if not regex_rows:
+        return
+
+    verbose("Scanning files for tag '" + regex_rows[0]["tag"] + "'")
+    execute_sql(db, "BEGIN")
+
+    files = list(execute_sql(db, "SELECT id, filename FROM files"))
+    insertSQL = "INSERT OR IGNORE INTO files_tags (f_id, t_id) VALUES (?, ?)"
+    for r in regex_rows:
+        compiled = re.compile(r["regex"])
+        for f in files:
+            if compiled.search(f["filename"]):
+                verbose(f["filename"], 3)
+                execute_sql(db, insertSQL, (f["id"], r["id"]))
+
+    execute_sql(db, "COMMIT")
+
+
+def tag_add_by_filename(db, filename):
+    verbose("Checking file for tags: " + filename, 2)
+    selectSQL = "SELECT t.id AS id FROM tags t JOIN tags_regex r ON t.id = r.t_id"
+    cur = execute_sql(db, selectSQL)
+    regex_rows = cur.fetchall()
+
+    if not regex_rows:
+        return
+
+    insertSQL = "INSERT OR IGNORE INTO files_tags (f_id, t_id) VALUES (?, ?)"
+    for row in regex_rows:
+        tagid = row["id"]
+        selectSQL = "SELECT id FROM files WHERE filename = ?"
+        cur = execute_sql(db, selectSQL, (filename,))
+        file_entry = cur.fetchone()
+        if file_entry:
+            f_id = file_entry[0]
+            selectSQL = "SELECT regex FROM tags_regex WHERE t_id = ?"
+            cur = execute_sql(db, selectSQL, (tagid, ))
+            regex_rows = cur.fetchall()
+            for r in regex_rows:
+                compiled = re.compile(r["regex"])
+                if compiled.search(filename):
+                    verbose(f"File matches tag '{tagid}': " + filename, 3)
+                    execute_sql(db, insertSQL, (f_id, tagid))
+
+
+def getMoviesByTagid(db, tagid, whereSql):
+    selectSQL = "SELECT m.id AS id, m.title AS title FROM movies m, files f, files_tags ft WHERE ft.t_id=? AND ft.f_id=f.id AND f.movie_id=m.id"
+    if whereSql:
+        selectSQL = f"{selectSQL} AND {whereSql}"
+    selectSQL = f"{selectSQL}ORDER BY m.year ASC, m.title ASC"
+    return list(execute_sql(db, selectSQL, (tagid,)))
+
+
+def tag_delete_all(db):
+    execute_sql(db, "DELETE FROM files_tags")
+    execute_sql(db, "DELETE FROM tags_regex")
+    execute_sql(db, "DELETE FROM tags", None, True)
+
+
+def regex_count(db, regex, tag = None):
+    return 0
