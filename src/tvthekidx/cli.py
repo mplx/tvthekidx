@@ -46,23 +46,41 @@ def exporter(args, remaining):
     plugin.export(db, collection, args, plugin_args)
 
 
-def dbtools(args, remaining=None):
-    if args.action == "create":
+def maintenance(args, remaining=None):
+    if args.action == "createdb":
         if os.path.isfile(args.dbfile):
             print(f"ERROR: database '{args.dbfile}' already exists")
             sys.exit(2)
         database.initialize_db(args.dbfile)
-    elif args.action == "compress":
+    elif args.action == "compressdb":
         if not os.path.isfile(args.dbfile):
             print(f"ERROR: database '{args.dbfile}' not found")
             sys.exit(2)
         db = database.create_connection(args.dbfile)
         database.cleanup_db(db)
-    elif args.action == "upgrade":
+    elif args.action == "upgradedb":
         if not os.path.isfile(args.dbfile):
             print(f"ERROR: database '{args.dbfile}' not found")
             sys.exit(2)
         database.upgrade_db(args.dbfile)
+    elif args.action == "detecttvstations":
+        if not os.path.isfile(args.dbfile):
+            print(f"ERROR: database '{args.dbfile}' not found")
+            sys.exit(2)
+        from . import tvstation
+        model = tvstation.load_model()
+        if model is None:
+            print("ERROR: model file 'best.pt' not found")
+            sys.exit(2)
+        db = database.create_connection(args.dbfile)
+        tvstation.backfill_tvstation(db, model)
+    elif args.action == "cleartvstations":
+        if not os.path.isfile(args.dbfile):
+            print(f"ERROR: database '{args.dbfile}' not found")
+            sys.exit(2)
+        db = database.create_connection(args.dbfile)
+        from . import tvstation
+        tvstation.clear_tvstation(db)
     else:
         print("ERROR: no or unknown action specified")
         sys.exit(2)
@@ -123,18 +141,18 @@ def main():
     exporterparser.add_argument("--collection", "-c", action="store", dest="collectionStr", default=None, help="comma-separated list of collections")
     exporterparser.add_argument("--format", "-f", action="store", dest="format", default="html", help="export plugin name")
 
-    exporterparser = subparsers.add_parser("database", help="database tools")
-    exporterparser.set_defaults(func=dbtools)
-    exporterparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
-    exporterparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="create/compress/upgrade")
+    maintenanceparser = subparsers.add_parser("maintenance", help="database and inference maintenance")
+    maintenanceparser.set_defaults(func=maintenance)
+    maintenanceparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
+    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations")
 
-    exporterparser = subparsers.add_parser("tags", help="file tagging")
-    exporterparser.set_defaults(func=tagging)
-    exporterparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
-    exporterparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="list/add/delete/export")
-    exporterparser.add_argument("--tag", "-t", action="store", dest="tag", default=None, help="tag")
-    exporterparser.add_argument("--regex", "-r", action="store", dest="regex", default=None, help="regular expression")
-    exporterparser.add_argument("--all", action="store_true", dest="allTags", help="delete all tags (requires --action delete)")
+    tagsparser = subparsers.add_parser("tags", help="file tagging")
+    tagsparser.set_defaults(func=tagging)
+    tagsparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
+    tagsparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="list/add/delete/export")
+    tagsparser.add_argument("--tag", "-t", action="store", dest="tag", default=None, help="tag")
+    tagsparser.add_argument("--regex", "-r", action="store", dest="regex", default=None, help="regular expression")
+    tagsparser.add_argument("--all", action="store_true", dest="allTags", help="delete all tags (requires --action delete)")
 
     args, remaining = parser.parse_known_args()
 

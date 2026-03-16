@@ -4,7 +4,7 @@
 # Copyright (c) 2021-2026 developer@mplx.eu
 
 from . import online
-from . utility import verbose, normalize_string
+from . utility import verbose, normalize_string, generate_oid
 
 import sqlite3
 from sqlite3 import Error
@@ -194,8 +194,45 @@ def upgrade_db(db_file):
         conn.commit()
         cursor.close()
 
-    " up-to-date "
+    " tvstation, lastseen, uuid "
     if DBVERSION == 5:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+        execute_sql(conn, "ALTER TABLE files ADD COLUMN tvstation TEXT DEFAULT NULL", None, True)
+        execute_sql(conn, "ALTER TABLE files ADD COLUMN lastseen INTEGER DEFAULT NULL", None, True)
+        execute_sql(conn, "UPDATE files SET lastseen = cast(strftime('%s','now') as int)", None, True)
+        execute_sql(conn, "ALTER TABLE movies ADD COLUMN oid TEXT DEFAULT NULL", None, True)
+        execute_sql(conn, "ALTER TABLE files  ADD COLUMN oid TEXT DEFAULT NULL", None, True)
+        execute_sql(conn, "ALTER TABLE actors ADD COLUMN oid TEXT DEFAULT NULL", None, True)
+        execute_sql(conn, "ALTER TABLE tags   ADD COLUMN oid TEXT DEFAULT NULL", None, True)
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, tmdb_id, title, year FROM movies")
+        movies_updates = [(generate_oid("movie", str(r[1]) if r[1] else f"{r[2]}:{r[3]}"), r[0]) for r in cursor.fetchall()]
+        cursor.executemany("UPDATE movies SET oid = ? WHERE id = ?", movies_updates)
+
+        cursor.execute("SELECT id, collection, relpath, filename FROM files")
+        files_updates = [(generate_oid("file", f"{r[1]}:{r[2]}:{r[3]}"), r[0]) for r in cursor.fetchall()]
+        cursor.executemany("UPDATE files SET oid = ? WHERE id = ?", files_updates)
+
+        cursor.execute("SELECT id, tmdb_id FROM actors")
+        actors_updates = [(generate_oid("actor", str(r[1])), r[0]) for r in cursor.fetchall()]
+        cursor.executemany("UPDATE actors SET oid = ? WHERE id = ?", actors_updates)
+
+        cursor.execute("SELECT id, tag FROM tags")
+        tags_updates = [(generate_oid("tag", r[1]), r[0]) for r in cursor.fetchall()]
+        cursor.executemany("UPDATE tags SET oid = ? WHERE id = ?", tags_updates)
+        conn.commit()
+
+        execute_sql(conn, 'CREATE UNIQUE INDEX "oid_movies" ON "movies" ("oid")', None, True)
+        execute_sql(conn, 'CREATE UNIQUE INDEX "oid_files"  ON "files"  ("oid")', None, True)
+        execute_sql(conn, 'CREATE UNIQUE INDEX "oid_actors" ON "actors" ("oid")', None, True)
+        execute_sql(conn, 'CREATE UNIQUE INDEX "oid_tags"   ON "tags"   ("oid")', None, True)
+        cursor.close()
+
+    " up-to-date "
+    if DBVERSION == 6:
         verbose("Database up-to-date", 1)
 
 
@@ -235,7 +272,7 @@ def getCrew(db, mid, where=None, limit=None):
 
 def getCollections(db, mid):
     cur = db.cursor()
-    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, screenshot FROM files WHERE movie_id = ? ORDER BY collection ASC"
+    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, screenshot, tvstation FROM files WHERE movie_id = ? ORDER BY collection ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
 
@@ -255,9 +292,9 @@ def getActors(db, where=None, orderby="popularity DESC, name ASC"):
 
 def getMoviesByActor(db, aid):
     cur = db.cursor()
-    selectSQL = "SELECT m.id, m.title, m.title_normalized, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL = "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
     selectSQL += " UNION "
-    selectSQL += "SELECT m.id, m.title, m.title_normalized, m.score, m.year FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL += "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
     selectSQL += "ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
     cur.execute(selectSQL, (aid, aid))
     return cur.fetchall()
@@ -284,19 +321,26 @@ def scanMovies(db, search):
 
 
 def addFileToDb(db, collection, filename, relpath):
-    insertSQL = "INSERT INTO files (collection, filename, relpath, movie_id) VALUES (?, ?, ?, NULL)"
+    oid = generate_oid("file", f"{collection}:{relpath}:{filename}")
+    insertSQL = "INSERT INTO files (collection, filename, relpath, movie_id, lastseen, oid) VALUES (?, ?, ?, NULL, cast(strftime('%s','now') as int), ?)"
     selectSQL = "SELECT * FROM files WHERE collection = ? AND filename = ? AND relpath = ?"
     cur = execute_sql(db, selectSQL, (collection, filename, relpath))
     entry = cur.fetchone()
     if entry is None:
-        execute_sql(db, insertSQL, (collection, filename, relpath))
+        execute_sql(db, insertSQL, (collection, filename, relpath, oid))
         return True
     return entry
 
 
+def updateLastSeen(db, collection, filename, relpath):
+    execute_sql(db, "UPDATE files SET lastseen = cast(strftime('%s','now') as int) WHERE collection = ? AND filename = ? AND relpath = ?", (collection, filename, relpath))
+
+
 def addMovieToDb(db, movie):
-    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, poster) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], normalize_string(movie['title']), movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster']))
+    key = str(movie['tmdb_id']) if movie['tmdb_id'] else f"{movie['title']}:{movie['release_year']}"
+    oid = generate_oid("movie", key)
+    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, poster, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], normalize_string(movie['title']), movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster'], oid))
     return result.lastrowid
 
 
@@ -307,8 +351,9 @@ def addActorToDb(db, actor):
     entry = cur.fetchone()
 
     if entry is None:
-        insertSQL = "INSERT INTO actors(name, popularity, profile, tmdb_id) VALUES (?, ?, ?, ?)"
-        result = execute_sql(db, insertSQL, (actor['name'], actor['popularity'], actor['profile'], actor['tmdb_id']))
+        oid = generate_oid("actor", str(actor['tmdb_id']))
+        insertSQL = "INSERT INTO actors(name, popularity, profile, tmdb_id, oid) VALUES (?, ?, ?, ?, ?)"
+        result = execute_sql(db, insertSQL, (actor['name'], actor['popularity'], actor['profile'], actor['tmdb_id'], oid))
         return result.lastrowid
 
     return entry['id']

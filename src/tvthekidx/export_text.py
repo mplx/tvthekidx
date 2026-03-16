@@ -26,7 +26,7 @@ def export(db, collection, args, plugin_args):
 
     cur = db.cursor()
     selectSQL = (
-        "SELECT DISTINCT m.title, m.year "
+        "SELECT DISTINCT m.title, m.year, f.tvstation "
         "FROM movies m JOIN files f ON m.id = f.movie_id"
     )
     if whereSql:
@@ -35,7 +35,11 @@ def export(db, collection, args, plugin_args):
     cur.execute(selectSQL)
     rows = cur.fetchall()
 
-    lines = [f"{r['title']} ({r['year']})" for r in rows]
+    lines = []
+    for r in rows:
+        tv = r['tvstation']
+        bracket = f" [{tv.upper()}]" if tv else ""
+        lines.append(f"{r['title']} ({r['year']}){bracket}")
 
     if plugin_args.outputFile:
         with open(plugin_args.outputFile, "w", encoding="utf8") as f:

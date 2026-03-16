@@ -7,14 +7,14 @@ import re
 import sqlite3
 
 from .database import execute_sql
-from .utility import verbose
+from .utility import verbose, generate_oid
 
 
 def tag_list(db, includeRegex=False, where=None):
     if includeRegex:
-        selectSQL = "SELECT t.id, t.tag AS tag, r.regex AS regex FROM tags t, tags_regex r WHERE t.id = r.t_id"
+        selectSQL = "SELECT t.id, t.oid, t.tag AS tag, r.regex AS regex FROM tags t, tags_regex r WHERE t.id = r.t_id"
     else:
-        selectSQL = "SELECT t.id, t.tag AS tag FROM tags t WHERE 1 = 1"
+        selectSQL = "SELECT t.id, t.oid, t.tag AS tag FROM tags t WHERE 1 = 1"
     if where:
         selectSQL = f"{selectSQL} AND {where}"
     if includeRegex:
@@ -36,8 +36,9 @@ def tag_add(db, tag, regex):
             tagid = entry[0]
 
     if tagid is None:
-        insertSQL = "INSERT INTO tags(tag) VALUES (?)"
-        result = execute_sql(db, insertSQL, (tag, ), True)
+        oid = generate_oid("tag", tag)
+        insertSQL = "INSERT INTO tags(tag, oid) VALUES (?, ?)"
+        result = execute_sql(db, insertSQL, (tag, oid), True)
         tagid = result.lastrowid
 
     if tagid:
@@ -146,7 +147,7 @@ def tag_add_by_filename(db, filename):
 
 
 def getMoviesByTagid(db, tagid, whereSql):
-    selectSQL = "SELECT m.id AS id, m.title AS title FROM movies m, files f, files_tags ft WHERE ft.t_id=? AND ft.f_id=f.id AND f.movie_id=m.id"
+    selectSQL = "SELECT m.id AS id, m.oid AS oid, m.title AS title FROM movies m, files f, files_tags ft WHERE ft.t_id=? AND ft.f_id=f.id AND f.movie_id=m.id"
     if whereSql:
         selectSQL = f"{selectSQL} AND {whereSql}"
     selectSQL = f"{selectSQL} ORDER BY m.year ASC, m.title ASC"

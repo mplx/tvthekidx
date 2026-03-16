@@ -6,7 +6,7 @@ a = Analysis(
     [ 'tvthekidx.py' ],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[("src/tvthekidx/tvstation.pt", "tvthekidx")],
     hiddenimports=[ "tmdbv3api", "ipaddress" ],
     hookspath=[],
     hooksconfig={},
