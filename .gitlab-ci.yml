@@ -1,7 +1,5 @@
 stages:
   - build
-  - test
-  - upload
   - release
 
 # --- BUILD ----------------------------------------------------------------------------------
@@ -11,14 +9,10 @@ build-debian-trixie-x64:
     image: python:3-slim-trixie
     tags:
         - docker-build
-    artifacts:
-        expire_in: 1 hour
-        paths:
-            - dist
     variables:
         GIT_DEPTH: 0
     before_script:
-        - apt update && apt install -y binutils git
+        - apt update && apt install -y binutils git zlib1g-dev libjpeg-dev
         - pip install --upgrade pip
         - python --version && pip --version
     script:
@@ -26,61 +20,9 @@ build-debian-trixie-x64:
         - pip install -r requirements.txt -r requirements-dev.txt
         - pylint --version && pylint --errors-only --disable import-error src/tvthekidx/*.py
         - flake8 --version && flake8 src/tvthekidx/*.py --ignore=E501,E722 --statistics --count
-        - mkdir build && python -m build
+        - pip install -e .
         - pyinstaller --clean tvthekidx.spec
-        - mv dist/tvthekidx dist/tvthekidx-trixie
-
-# --- TEST -----------------------------------------------------------------------------------
-
-test-debian-trixie-on-bookworm-x64:
-    stage: test
-    image: debian:bookworm-slim
-    tags:
-        - docker-build
-    variables:
-        GIT_STRATEGY: none
-    script:
-        - dist/tvthekidx-trixie -h
-    needs:
-        - job: build-debian-trixie-x64
-          artifacts: true
-
-test-debian-trixie-on-trixie-x64:
-    stage: test
-    image: debian:trixie-slim
-    tags:
-        - docker-build
-    variables:
-        GIT_STRATEGY: none
-    script:
-        - dist/tvthekidx-trixie -h
-    needs:
-        - job: build-debian-trixie-x64
-          artifacts: true
-
-# --- UPLOAD --------------------------------------------------------------------------------
-
-upload-artifacts:
-    stage: upload
-    image: curlimages/curl:latest
-    tags:
-        - docker-deploy
-    needs:
-        - job: build-debian-trixie-x64
-          artifacts: true
-        - job: test-debian-trixie-on-trixie-x64
-          artifacts: false
-    rules:
-        - if: $CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9a-zA-Z.-]+))?$/
-    variables:
-        GIT_STRATEGY: none
-        LINUX_AMD64_BINARY_BUILD: "tvthekidx-trixie"
-        LINUX_AMD64_BINARY: "tvthekidx"
-        PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${CI_PROJECT_NAME}/${CI_COMMIT_TAG}"
-    script:
-        - |
-            echo Uploading binaries...
-            curl --fail --silent --show-error --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file dist/tvthekidx-trixie ${PACKAGE_REGISTRY_URL}/tvthekidx-debian-amd64
+        - dist/tvthekidx -h
 
 # --- RELEASE --------------------------------------------------------------------------------
 
@@ -90,7 +32,8 @@ release-source:
     tags:
         - docker-deploy
     needs:
-        - build-debian-trixie-x64
+        - job: build-debian-trixie-x64
+          artifacts: false
     rules:
        - if: $CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9a-zA-Z.-]+))?$/
     variables:
@@ -99,29 +42,3 @@ release-source:
         - pip install build twine
         - python -m build
         - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
-
-#release-pypi:
-#    stage: release
-
-release-binary:
-    stage: release
-    image: registry.gitlab.com/gitlab-org/release-cli:latest
-    tags:
-        - docker-deploy
-    needs:
-        - job: upload-artifacts
-    rules:
-       - if: $CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9a-zA-Z.-]+))?$/
-    variables:
-        GIT_STRATEGY: none
-        LINUX_AMD64_BINARY: "tvthekidx-debian-amd64"
-        PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${CI_PROJECT_NAME}/${CI_COMMIT_TAG}"
-    release:
-        name: 'Release $CI_COMMIT_TAG'
-        description: 'Release $CI_COMMIT_TAG'
-        tag_name: '$CI_COMMIT_TAG'
-        ref: '$CI_COMMIT_TAG'
-    script:
-      - |
-        release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
-          --assets-link "{\"name\":\"${LINUX_AMD64_BINARY}\",\"url\":\"${PACKAGE_REGISTRY_URL}/${LINUX_AMD64_BINARY}\"}"
