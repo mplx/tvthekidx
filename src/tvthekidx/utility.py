@@ -13,12 +13,10 @@ import io
 from PIL import Image
 
 
-VERBOSITY_LEVEL : int = 1
+VERBOSITY_LEVEL: int = 1
 
 
-def verbose(text : str, level: int = 1):
-    global VERBOSITY_LEVEL
-
+def verbose(text: str, level: int = 1):
     if VERBOSITY_LEVEL >= level:
         print(f"[{level}] {text}")
 
@@ -30,8 +28,6 @@ def setVerbosity(level: int = 1):
 
 
 def getVerbosity():
-    global VERBOSITY_LEVEL
-
     return VERBOSITY_LEVEL
 
 

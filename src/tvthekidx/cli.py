@@ -108,7 +108,7 @@ def tagging(args, remaining=None):
             sys.exit(2)
         else:
             try:
-                recompiled = re.compile(args.regex)
+                re.compile(args.regex)
             except re.error:
                 print("ERROR: regex invalid")
                 sys.exit(2)

@@ -701,5 +701,3 @@ def lookupMovie(db, search, title, year):
             return addMovieToDb(db, unknown)
     else:
         return entry['id']
-
-

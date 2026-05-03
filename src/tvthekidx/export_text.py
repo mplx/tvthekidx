@@ -6,8 +6,6 @@
 import argparse
 import sys
 
-from . import database
-
 
 def parse_args(remaining):
     parser = argparse.ArgumentParser(prog="tvthekidx export --format text", add_help=False)

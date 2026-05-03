@@ -83,7 +83,7 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         mtime = os.path.getmtime(m)
         entry = addFileToDb(db, collection, f, relPath)
         if entry is True:
-            result = tag_add_by_filename(db, f)
+            tag_add_by_filename(db, f)
             from . import tvstation as _tvstation
             station = _tvstation.detect_tvstation_from_filename(f)
             if station is not None:
@@ -91,7 +91,7 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
                 if file_id is not None:
                     db.cursor().execute("UPDATE files SET tvstation = ? WHERE id = ?", (station, file_id))
         else:
-            result = updateLastSeen(db, collection, f, relPath)
+            updateLastSeen(db, collection, f, relPath)
         forceScreenshot = False
         if ((entry is True) or (size != entry["size"]) or (entry["duration"] is None)):
             verbose(f"Updating meta data for {f}", 2)

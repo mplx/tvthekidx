@@ -153,5 +153,5 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 - **`maintenance` subcommand** — replaces `database`; adds `detecttvstations`, `cleartvstations`, `getscreenshots`, `clearscreenshots` actions
 - **`--graphics` export option** — choose between embedded base64, external file references, or disabled images
 - **HTML export performance** — ~7× faster; bulk SQL queries replace per-movie/per-file round-trips; SQLite mmap and page-cache tuning cuts system time by ~190×
-- **Database schema v9** — all binary attachments (posters, actor profiles, screenshots) unified in a single `attachments` table with a composite index on `(ref_id, type)`
+- **Database schema v8** — all binary attachments (posters, actor profiles, screenshots) unified in a single `attachments` table with a composite index on `(ref_id, type)`
 - **CI pipeline upgraded to Debian trixie** — build image updated to `python:3-slim-trixie`; test matrix updated to bookworm and trixie; win64 removed

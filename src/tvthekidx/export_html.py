@@ -49,6 +49,7 @@ def helprow(f, key_html, desc):
     f.write(f'<div class="col-8">{desc}</div>')
     f.write('</div>\n')
 
+
 def writeHeader(f, title="TVThek Index"):
     now = datetime.datetime.now()
     f.write('<!DOCTYPE html>\n')
@@ -73,8 +74,8 @@ def writeHeader(f, title="TVThek Index"):
     f.write('       .fixed-badge.fw-100 { width: 100px; }\n')
     f.write('       .fixed-badge.fw-120 { width: 120px; }\n')
     f.write('       .fixed-badge.fw-160 { width: 160px; }\n')
-    #f.write('       .row { outline: 1px dashed red; } .col, [class^="col-"] { outline: 1px dashed blue; background-color: rgba(0, 123, 255, 0.1); }\n') # debug bootstrap
-    #f.write('       .row { content-visibility: auto; contain-intrinsic-size: 300px; }\n')
+    # f.write('       .row { outline: 1px dashed red; } .col, [class^="col-"] { outline: 1px dashed blue; background-color: rgba(0, 123, 255, 0.1); }\n')
+    # f.write('       .row { content-visibility: auto; contain-intrinsic-size: 300px; }\n')
     f.write('       .spin-once { animation: spinOnce 0.25s ease-out; display: inline-block; }\n')
     f.write('       @keyframes spinOnce { 0%   { transform: scale(1); } 50%  { transform: scale(1.15); } 100% { transform: scale(1); } }\n')
     f.write('       .kbd-key { display: inline-block; padding: 2px 6px; margin: 0 2px; font-size: 0.85rem; font-family: monospace; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa; box-shadow: 0 1px 0 #ccc; }')
@@ -493,9 +494,9 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
                     metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"DbMovieID={movieid} DbFileID={fileid}\">ID</span> "
                 if col["tvstation"] is not None:
                     metadatastr = metadatastr + f"<span class=\"badge bg-success\" title=\"TV-Station\">{tvstation_module.display_name(col['tvstation'])}</span> "
-            #metadatastr = metadatastr + "<br />"
+            # metadatastr = metadatastr + "<br />"
             combinedstr = combinedstr + collectionstr + metadatastr + copyhtmlstr + "<br />"
-            collectionstr = metadatastr = "" # diryt hack to get combinedstr working; replaces collectionstr+metadatastr in future
+            collectionstr = metadatastr = ""  # diryt hack to get combinedstr working; replaces collectionstr+metadatastr in future
         if fileDetail == 1:
             collectionstr = f"<dt>Bibliothek</dt><dd>{collectionstr}</dd>"
             metadatastr = f"<dt>Details</dt><dd>{metadatastr}</dd>"
@@ -643,14 +644,14 @@ def writeTagsDetail(db, f, collection):
                         <span class="badge bg-secondary">{m['title']}</span>
                     </a>
                 """)
-            f.write(f"""
+            f.write("""
                 </div></div>
                 """)
 
     if tcnt < 1:
-        f.write(f"Keine Tags gefunden.")
+        f.write("Keine Tags gefunden.")
     elif mcnt < 1:
-        f.write(f"Keine Medien gefunden.")
+        f.write("Keine Medien gefunden.")
 
     f.write('\n</section>\n')
 

@@ -13,8 +13,8 @@
 - HTML generator meta tag
 
 ### Changed
+- Database schema v8
 - HTML export ~7× faster — bulk SQL queries replace per-movie/per-file round-trips; SQLite mmap and page-cache tuning reduces system time by ~190×
-- Database schema v9 — all binary attachments (posters, actor profiles, screenshots) unified in `attachments` table with composite index on `(ref_id, type)`
 - CI pipeline upgraded to Debian trixie; win64 build removed; test matrix updated to bookworm and trixie
 - `--url` flag added to HTML exporter for video hyperlink prefix
 - Top list excludes 100%-scored movies
