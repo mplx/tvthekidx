@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint (trixie)
+    runs-on: ubuntu-latest
+    container:
+      image: python:3-slim-trixie
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Python dependencies
+        run: pip install pylint flake8
+
+      - name: Lint — pylint
+        run: pylint --errors-only --disable import-error src/tvthekidx/*.py
+
+      - name: Lint — flake8
+        run: flake8 src/tvthekidx/*.py --ignore=E501,E722 --statistics --count
