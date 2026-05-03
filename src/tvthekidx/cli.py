@@ -52,35 +52,40 @@ def maintenance(args, remaining=None):
             print(f"ERROR: database '{args.dbfile}' already exists")
             sys.exit(2)
         database.initialize_db(args.dbfile)
-    elif args.action == "compressdb":
-        if not os.path.isfile(args.dbfile):
-            print(f"ERROR: database '{args.dbfile}' not found")
-            sys.exit(2)
-        db = database.create_connection(args.dbfile)
+        return
+
+    if not os.path.isfile(args.dbfile):
+        print(f"ERROR: database '{args.dbfile}' not found")
+        sys.exit(2)
+    db = database.create_connection(args.dbfile)
+
+    if args.action == "compressdb":
         database.cleanup_db(db)
     elif args.action == "upgradedb":
-        if not os.path.isfile(args.dbfile):
-            print(f"ERROR: database '{args.dbfile}' not found")
-            sys.exit(2)
         database.upgrade_db(args.dbfile)
+
     elif args.action == "detecttvstations":
-        if not os.path.isfile(args.dbfile):
-            print(f"ERROR: database '{args.dbfile}' not found")
-            sys.exit(2)
         from . import tvstation
         model = tvstation.load_model()
         if model is None:
             print("ERROR: model file 'best.pt' not found")
             sys.exit(2)
-        db = database.create_connection(args.dbfile)
         tvstation.backfill_tvstation(db, model)
     elif args.action == "cleartvstations":
-        if not os.path.isfile(args.dbfile):
-            print(f"ERROR: database '{args.dbfile}' not found")
-            sys.exit(2)
-        db = database.create_connection(args.dbfile)
         from . import tvstation
         tvstation.clear_tvstation(db)
+
+    elif args.action == "clearscreenshots":
+        database.clear_screenshots(db)
+    elif args.action == "getscreenshots":
+        if not args.libPath:
+            print("ERROR: --path is required for getscreenshots")
+            sys.exit(2)
+        if not args.collection:
+            print("ERROR: --collection is required for getscreenshots")
+            sys.exit(2)
+        files.backfill_screenshots(db, args.collection, args.libPath)
+
     else:
         print("ERROR: no or unknown action specified")
         sys.exit(2)
@@ -144,7 +149,9 @@ def main():
     maintenanceparser = subparsers.add_parser("maintenance", help="database and inference maintenance")
     maintenanceparser.set_defaults(func=maintenance)
     maintenanceparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
-    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations")
+    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots")
+    maintenanceparser.add_argument("--path", "-p", action="store", dest="libPath", default=None, help="path to video files (required for getscreenshots)")
+    maintenanceparser.add_argument("--collection", "-c", action="store", dest="collection", default=None, help="collection filter (optional for getscreenshots)")
 
     tagsparser = subparsers.add_parser("tags", help="file tagging")
     tagsparser.set_defaults(func=tagging)

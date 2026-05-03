@@ -18,6 +18,9 @@ def create_connection(db_file):
     try:
         conn = sqlite3.connect(db_file)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA cache_size = -65536")    # 64 MB page cache
+        conn.execute("PRAGMA temp_store = MEMORY")
+        conn.execute("PRAGMA mmap_size = 268435456")  # 256 MB memory-mapped I/O
     except BaseException as e:
         print(e)
     else:
@@ -138,6 +141,7 @@ def upgrade_db(db_file):
     if DBVERSION == 1:
         DBVERSION += 1
         verbose("Upgrading database to version " + str(DBVERSION), 2)
+
         SQL = 'ALTER TABLE files ADD COLUMN width INTEGER'
         execute_sql(conn, SQL, None, True)
         SQL = 'ALTER TABLE files ADD COLUMN height INTEGER'
@@ -155,6 +159,7 @@ def upgrade_db(db_file):
     if DBVERSION == 2:
         DBVERSION += 1
         verbose("Upgrading database to version " + str(DBVERSION), 2)
+
         SQL = 'CREATE TABLE "crew_movies" ("a_id" INTEGER NOT NULL, "m_id" INTEGER NOT NULL, "job" TEXT, FOREIGN KEY("m_id") REFERENCES "movies"("id"), FOREIGN KEY("a_id") REFERENCES "actors"("id"), PRIMARY KEY("a_id","m_id"))'
         execute_sql(conn, SQL, None, True)
         SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
@@ -164,6 +169,7 @@ def upgrade_db(db_file):
     if DBVERSION == 3:
         DBVERSION += 1
         verbose("Upgrading database to version " + str(DBVERSION), 2)
+
         SQL = 'CREATE TABLE "tags" ("id" INTEGER, "tag" TEXT NOT NULL UNIQUE, PRIMARY KEY("id" AUTOINCREMENT))'
         execute_sql(conn, SQL, None, True)
         SQL = 'CREATE TABLE "files_tags" ("f_id" INTEGER, "t_id" INTEGER, PRIMARY KEY("f_id","t_id"), FOREIGN KEY("t_id") REFERENCES "tags"("id"), FOREIGN KEY("f_id") REFERENCES "files"("id"))'
@@ -181,9 +187,6 @@ def upgrade_db(db_file):
         SQL = "ALTER TABLE movies ADD COLUMN title_normalized TEXT"
         execute_sql(conn, SQL, None, True)
 
-        SQL = f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'"
-        execute_sql(conn, SQL, None, True)
-
         cursor = conn.cursor()
         cursor.execute("SELECT id, title FROM movies")
         rows = cursor.fetchall()
@@ -194,10 +197,13 @@ def upgrade_db(db_file):
         conn.commit()
         cursor.close()
 
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+
     " tvstation, lastseen, uuid "
     if DBVERSION == 5:
         DBVERSION += 1
         verbose("Upgrading database to version " + str(DBVERSION), 2)
+
         execute_sql(conn, "ALTER TABLE files ADD COLUMN tvstation TEXT DEFAULT NULL", None, True)
         execute_sql(conn, "ALTER TABLE files ADD COLUMN lastseen INTEGER DEFAULT NULL", None, True)
         execute_sql(conn, "UPDATE files SET lastseen = cast(strftime('%s','now') as int)", None, True)
@@ -205,7 +211,6 @@ def upgrade_db(db_file):
         execute_sql(conn, "ALTER TABLE files  ADD COLUMN oid TEXT DEFAULT NULL", None, True)
         execute_sql(conn, "ALTER TABLE actors ADD COLUMN oid TEXT DEFAULT NULL", None, True)
         execute_sql(conn, "ALTER TABLE tags   ADD COLUMN oid TEXT DEFAULT NULL", None, True)
-        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
 
         cursor = conn.cursor()
         cursor.execute("SELECT id, tmdb_id, title, year FROM movies")
@@ -231,8 +236,56 @@ def upgrade_db(db_file):
         execute_sql(conn, 'CREATE UNIQUE INDEX "oid_tags"   ON "tags"   ("oid")', None, True)
         cursor.close()
 
-    " up-to-date "
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+
+    " files_attachments table, poster/profile migration "
     if DBVERSION == 6:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+
+        execute_sql(conn, 'CREATE TABLE "files_attachments" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "type" TEXT NOT NULL, "data" BLOB)', None, True)
+        execute_sql(conn, 'CREATE TABLE "files_attachments_map" ("f_id" INTEGER NOT NULL, "a_id" INTEGER NOT NULL, PRIMARY KEY("f_id","a_id"), FOREIGN KEY("f_id") REFERENCES "files"("id"), FOREIGN KEY("a_id") REFERENCES "files_attachments"("id"))', None, True)
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, screenshot FROM files WHERE screenshot IS NOT NULL")
+        for row in cursor.fetchall():
+            cursor2 = conn.cursor()
+            cursor2.execute("INSERT INTO files_attachments (type, data) VALUES ('screenshot', ?)", (row[1],))
+            att_id = cursor2.lastrowid
+            cursor2.execute("INSERT INTO files_attachments_map (f_id, a_id) VALUES (?, ?)", (row[0], att_id))
+        conn.commit()
+        cursor.close()
+        execute_sql(conn, "ALTER TABLE files DROP COLUMN screenshot", None, True)
+
+        execute_sql(conn, "ALTER TABLE files_attachments ADD COLUMN ref_id INTEGER DEFAULT NULL", None, True)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, poster FROM movies WHERE poster IS NOT NULL")
+        for row in cursor.fetchall():
+            cursor.execute("INSERT INTO files_attachments (type, data, ref_id) VALUES ('poster', ?, ?)", (row[1], row[0]))
+        cursor.execute("SELECT id, profile FROM actors WHERE profile IS NOT NULL")
+        for row in cursor.fetchall():
+            cursor.execute("INSERT INTO files_attachments (type, data, ref_id) VALUES ('profile', ?, ?)", (row[1], row[0]))
+        conn.commit()
+        cursor.close()
+        execute_sql(conn, "ALTER TABLE movies DROP COLUMN poster", None, True)
+        execute_sql(conn, "ALTER TABLE actors DROP COLUMN profile", None, True)
+
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+
+    " drop files_attachments_map, migrate screenshots to ref_id, rename files_attachments to attachments, composite index "
+    if DBVERSION == 7:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+
+        execute_sql(conn, "UPDATE files_attachments SET ref_id = (SELECT f_id FROM files_attachments_map WHERE a_id = files_attachments.id) WHERE type = 'screenshot'", None, True)
+        execute_sql(conn, 'DROP TABLE "files_attachments_map"', None, True)
+        execute_sql(conn, 'ALTER TABLE "files_attachments" RENAME TO "attachments"', None, True)
+        execute_sql(conn, 'CREATE INDEX "idx_attachments_ref_type" ON "attachments" ("ref_id", "type")', None, True)
+
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+
+    " up-to-date "
+    if DBVERSION == 8:
         verbose("Database up-to-date", 1)
 
 
@@ -272,9 +325,193 @@ def getCrew(db, mid, where=None, limit=None):
 
 def getCollections(db, mid):
     cur = db.cursor()
-    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, screenshot, tvstation FROM files WHERE movie_id = ? ORDER BY collection ASC"
+    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, tvstation FROM files WHERE movie_id = ? ORDER BY collection ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
+
+
+def getCollections_bulk(db, movie_ids):
+    if not movie_ids:
+        return {}
+    ph = ",".join("?" * len(movie_ids))
+    cur = db.cursor()
+    cur.execute(
+        f"SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, tvstation, movie_id FROM files WHERE movie_id IN ({ph}) ORDER BY collection ASC",
+        list(movie_ids))
+    result = {}
+    for row in cur.fetchall():
+        result.setdefault(row["movie_id"], []).append(row)
+    return result
+
+
+def getCast_bulk(db, movie_ids, limit=None):
+    if not movie_ids:
+        return {}
+    ph = ",".join("?" * len(movie_ids))
+    cur = db.cursor()
+    cur.execute(
+        f"SELECT a.*, c.m_id FROM actors_movies c JOIN actors a ON c.a_id = a.id WHERE c.m_id IN ({ph}) ORDER BY a.popularity DESC",
+        list(movie_ids))
+    result = {}
+    for row in cur.fetchall():
+        lst = result.setdefault(row["m_id"], [])
+        if limit is None or len(lst) < limit:
+            lst.append(row)
+    return result
+
+
+def getCrew_bulk(db, movie_ids, where=None, limit=None):
+    if not movie_ids:
+        return {}
+    ph = ",".join("?" * len(movie_ids))
+    sql = f"SELECT a.*, c.job, c.m_id FROM crew_movies c JOIN actors a ON c.a_id = a.id WHERE c.m_id IN ({ph})"
+    if where:
+        sql += f" AND ({where})"
+    sql += " ORDER BY a.popularity DESC"
+    cur = db.cursor()
+    cur.execute(sql, list(movie_ids))
+    result = {}
+    for row in cur.fetchall():
+        lst = result.setdefault(row["m_id"], [])
+        if limit is None or len(lst) < limit:
+            lst.append(row)
+    return result
+
+
+def get_file_id(db, collection, filename, relpath):
+    cur = db.cursor()
+    cur.execute("SELECT id FROM files WHERE collection = ? AND filename = ? AND relpath = ?", (collection, filename, relpath))
+    row = cur.fetchone()
+    return row["id"] if row else None
+
+
+def add_file_attachment(db, file_id, att_type, data):
+    cur = db.cursor()
+    cur.execute("INSERT INTO attachments (type, data, ref_id) VALUES (?, ?, ?)",
+                (att_type, sqlite3.Binary(data), file_id))
+    db.commit()
+
+
+def count_file_attachments(db, file_id, att_type=None):
+    cur = db.cursor()
+    sql = "SELECT COUNT(*) FROM attachments WHERE ref_id = ?"
+    params = (file_id,)
+    if att_type:
+        sql += " AND type = ?"
+        params = (file_id, att_type)
+    cur.execute(sql, params)
+    return cur.fetchone()[0]
+
+
+def get_file_attachments(db, file_id, att_type=None):
+    cur = db.cursor()
+    sql = "SELECT id, type, data FROM attachments WHERE ref_id = ?"
+    params = (file_id,)
+    if att_type:
+        sql += " AND type = ?"
+        params = (file_id, att_type)
+    cur.execute(sql, params)
+    return cur.fetchall()
+
+
+def get_file_attachments_bulk(db, file_ids, att_type=None):
+    if not file_ids:
+        return {}
+    ph = ",".join("?" * len(file_ids))
+    sql = f"SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
+    params = list(file_ids)
+    if att_type:
+        sql += " AND type = ?"
+        params.append(att_type)
+    cur = db.cursor()
+    cur.execute(sql, params)
+    result = {}
+    for row in cur.fetchall():
+        result.setdefault(row["ref_id"], []).append(row)
+    return result
+
+
+def delete_file_attachments(db, file_id, att_type=None):
+    cur = db.cursor()
+    if att_type:
+        cur.execute("DELETE FROM attachments WHERE ref_id = ? AND type = ?", (file_id, att_type))
+    else:
+        cur.execute("DELETE FROM attachments WHERE ref_id = ?", (file_id,))
+    db.commit()
+
+
+def clear_screenshots(db):
+    cur = db.cursor()
+    cur.execute("DELETE FROM attachments WHERE type = 'screenshot'")
+    db.commit()
+
+
+def add_movie_attachment(db, movie_id, att_type, data):
+    cur = db.cursor()
+    cur.execute("INSERT INTO attachments (type, data, ref_id) VALUES (?, ?, ?)", (att_type, sqlite3.Binary(data), movie_id))
+    db.commit()
+
+
+def get_movie_attachments(db, movie_id, att_type=None):
+    sql = "SELECT id, type, data FROM attachments WHERE ref_id = ?"
+    params = (movie_id,)
+    if att_type:
+        sql += " AND type = ?"
+        params = (movie_id, att_type)
+    cur = db.cursor()
+    cur.execute(sql, params)
+    return cur.fetchall()
+
+
+def get_movie_attachments_bulk(db, movie_ids, att_type=None):
+    if not movie_ids:
+        return {}
+    ph = ",".join("?" * len(movie_ids))
+    sql = f"SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
+    params = list(movie_ids)
+    if att_type:
+        sql += " AND type = ?"
+        params.append(att_type)
+    cur = db.cursor()
+    cur.execute(sql, params)
+    result = {}
+    for row in cur.fetchall():
+        result.setdefault(row["ref_id"], []).append(row)
+    return result
+
+
+def add_actor_attachment(db, actor_id, att_type, data):
+    cur = db.cursor()
+    cur.execute("INSERT INTO attachments (type, data, ref_id) VALUES (?, ?, ?)", (att_type, sqlite3.Binary(data), actor_id))
+    db.commit()
+
+
+def get_actor_attachments(db, actor_id, att_type=None):
+    sql = "SELECT id, type, data FROM attachments WHERE ref_id = ?"
+    params = (actor_id,)
+    if att_type:
+        sql += " AND type = ?"
+        params = (actor_id, att_type)
+    cur = db.cursor()
+    cur.execute(sql, params)
+    return cur.fetchall()
+
+
+def get_actor_attachments_bulk(db, actor_ids, att_type=None):
+    if not actor_ids:
+        return {}
+    ph = ",".join("?" * len(actor_ids))
+    sql = f"SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
+    params = list(actor_ids)
+    if att_type:
+        sql += " AND type = ?"
+        params.append(att_type)
+    cur = db.cursor()
+    cur.execute(sql, params)
+    result = {}
+    for row in cur.fetchall():
+        result.setdefault(row["ref_id"], []).append(row)
+    return result
 
 
 def getActors(db, where=None, orderby="popularity DESC, name ASC"):
@@ -298,6 +535,27 @@ def getMoviesByActor(db, aid):
     selectSQL += "ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
     cur.execute(selectSQL, (aid, aid))
     return cur.fetchall()
+
+
+def getMoviesByActor_bulk(db, actor_ids):
+    if not actor_ids:
+        return {}
+    ph = ",".join("?" * len(actor_ids))
+    params = list(actor_ids)
+    sql = (
+        f"SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
+        f"FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
+        f"UNION "
+        f"SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
+        f"FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
+        f"ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
+    )
+    cur = db.cursor()
+    cur.execute(sql, params + params)
+    result = {}
+    for row in cur.fetchall():
+        result.setdefault(row["a_id"], []).append(row)
+    return result
 
 
 def assignMovieToFile(db, fid, mid):
@@ -339,9 +597,12 @@ def updateLastSeen(db, collection, filename, relpath):
 def addMovieToDb(db, movie):
     key = str(movie['tmdb_id']) if movie['tmdb_id'] else f"{movie['title']}:{movie['release_year']}"
     oid = generate_oid("movie", key)
-    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, poster, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], normalize_string(movie['title']), movie['release_year'], movie['description'], movie['popularity'], movie['score'], movie['poster'], oid))
-    return result.lastrowid
+    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], normalize_string(movie['title']), movie['release_year'], movie['description'], movie['popularity'], movie['score'], oid))
+    movie_id = result.lastrowid
+    if movie.get('poster'):
+        add_movie_attachment(db, movie_id, 'poster', movie['poster'])
+    return movie_id
 
 
 def addActorToDb(db, actor):
@@ -352,9 +613,12 @@ def addActorToDb(db, actor):
 
     if entry is None:
         oid = generate_oid("actor", str(actor['tmdb_id']))
-        insertSQL = "INSERT INTO actors(name, popularity, profile, tmdb_id, oid) VALUES (?, ?, ?, ?, ?)"
-        result = execute_sql(db, insertSQL, (actor['name'], actor['popularity'], actor['profile'], actor['tmdb_id'], oid))
-        return result.lastrowid
+        insertSQL = "INSERT INTO actors(name, popularity, tmdb_id, oid) VALUES (?, ?, ?, ?)"
+        result = execute_sql(db, insertSQL, (actor['name'], actor['popularity'], actor['tmdb_id'], oid))
+        actor_id = result.lastrowid
+        if actor.get('profile'):
+            add_actor_attachment(db, actor_id, 'profile', actor['profile'])
+        return actor_id
 
     return entry['id']
 

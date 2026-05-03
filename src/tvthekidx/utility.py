@@ -91,7 +91,7 @@ def include_image(img_bytes, gfxmode, outdir="img", target_w=154, target_h=231, 
     new_w = round(orig_w * scale)
     new_h = round(orig_h * scale)
 
-    img = img.resize((new_w, new_h), Image.LANCZOS)
+    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
     left = max(0, (new_w - target_w) // 2)
     top = max(0, (new_h - target_h) // 2)

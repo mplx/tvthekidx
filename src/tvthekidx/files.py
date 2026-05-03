@@ -3,6 +3,7 @@
 # TVThe(k)Idx
 # Copyright (c) 2021-2026 developer@mplx.eu
 
+from . import database as _database
 from .database import execute_sql, addFileToDb, updateLastSeen
 from .tags import tag_add_by_filename
 from .utility import verbose
@@ -10,21 +11,34 @@ from .utility import verbose
 import os
 import io
 import glob
-import sqlite3
 
 import ffmpeg
 from moviepy.editor import VideoFileClip
 from PIL import Image
 
 
-def store_screenshot(db, collection, m, filename, relpath, time=500):
-    try:
-        screenshot = get_screenshot(m, time)
-        updateSQL = "UPDATE files SET screenshot = ? WHERE collection = ? AND filename = ? AND relpath = ?"
-        execute_sql(db, updateSQL, (sqlite3.Binary(screenshot), collection, filename, relpath))
-        return True
-    except:
+def store_screenshot(db, collection, m, filename, relpath):
+    file_id = _database.get_file_id(db, collection, filename, relpath)
+    if file_id is None:
         return False
+    try:
+        clip = VideoFileClip(m)
+        length = clip.duration
+        clip.reader.close()
+        clip.audio.reader.close_proc()
+    except Exception:
+        return False
+    offsets = [max(0.5, length * 0.2), length * 0.5, length * 0.8]
+    _database.delete_file_attachments(db, file_id, 'screenshot')
+    captured = 0
+    for t in offsets:
+        try:
+            data = get_screenshot(m, t)
+            _database.add_file_attachment(db, file_id, 'screenshot', data)
+            captured += 1
+        except Exception:
+            pass
+    return captured > 0
 
 
 def get_screenshot(video_path, time):
@@ -55,9 +69,9 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
     if recursiveSearch:
         scanPath = scanPath + '**/'
     fn = scanPath + '* ([0-9][0-9][0-9][0-9])*.'
-    movies = glob.glob(fn + 'mp4', recursive=recursiveSearch)
+    movies = list(glob.glob(fn + 'mp4', recursive=recursiveSearch))
     for ext in ('avi', 'm4v', 'mkv', 'mov', 'mpg'):
-        movies.extend(glob.glob(fn + ext, recursive=recursiveSearch))
+        movies += glob.glob(fn + ext, recursive=recursiveSearch)
 
     for m in movies:
         idx = idx + 1
@@ -70,6 +84,12 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         entry = addFileToDb(db, collection, f, relPath)
         if entry is True:
             result = tag_add_by_filename(db, f)
+            from . import tvstation as _tvstation
+            station = _tvstation.detect_tvstation_from_filename(f)
+            if station is not None:
+                file_id = _database.get_file_id(db, collection, f, relPath)
+                if file_id is not None:
+                    db.cursor().execute("UPDATE files SET tvstation = ? WHERE id = ?", (station, file_id))
         else:
             result = updateLastSeen(db, collection, f, relPath)
         forceScreenshot = False
@@ -90,7 +110,12 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
                 forceScreenshot = True
             if result is False:
                 verbose(f"Update meta data for {f} failed", 2)
-        if ((entry is True) or (forceScreenshot is True) or (entry["screenshot"] is None)):
+        existing_screenshots = []
+        if entry is not True:
+            file_id = _database.get_file_id(db, collection, f, relPath)
+            if file_id is not None:
+                existing_screenshots = _database.get_file_attachments(db, file_id, 'screenshot')
+        if ((entry is True) or (forceScreenshot is True) or not existing_screenshots):
             verbose(f"Grabbing screenshot for {f}", 2)
             result = store_screenshot(db, collection, m, f, relPath)
             if result is False:
@@ -112,12 +137,49 @@ def scanDir(db, collection, rootDir, recursiveSearch=False):
         fn = fn + row['filename']
 
         if (not os.path.isfile(fn)):
-            deleteSQL = f"DELETE FROM files WHERE id = {row['id']}"
-            execute_sql(db, deleteSQL)
+            file_id = row['id']
+            _database.delete_file_attachments(db, file_id)
+            execute_sql(db, "DELETE FROM files_tags WHERE f_id = ?", (file_id,))
+            execute_sql(db, "DELETE FROM files WHERE id = ?", (file_id,))
 
     " finish "
     db.commit()
     return None
+
+
+def backfill_screenshots(db, collection, rootDir, threshold=3):
+    cur = db.cursor()
+    sql = """
+        SELECT f.id, f.collection, f.filename, f.relpath
+        FROM files f
+        LEFT JOIN (
+            SELECT ref_id, COUNT(*) AS cnt
+            FROM attachments
+            WHERE type = 'screenshot'
+            GROUP BY ref_id
+        ) sc ON f.id = sc.ref_id
+        WHERE COALESCE(sc.cnt, 0) < ?
+    """
+    params = [threshold]
+    if collection:
+        sql += " AND f.collection = ?"
+        params.append(collection)
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+    verbose(f"Capturing screenshots for {len(rows)} files (threshold={threshold})", 2)
+    for idx, row in enumerate(rows, 1):
+        relpath = row["relpath"]
+        if relpath and relpath != '.':
+            fn = os.path.join(rootDir, relpath, row["filename"])
+        else:
+            fn = os.path.join(rootDir, row["filename"])
+        if not os.path.isfile(fn):
+            verbose(f"  [{idx}/{len(rows)}] not found, skipping: {fn}", 2)
+            continue
+        verbose(f"  [{idx}/{len(rows)}] {row['filename']}", 3)
+        result = store_screenshot(db, row["collection"], fn, row["filename"], row["relpath"])
+        if not result:
+            verbose(f"  [{idx}/{len(rows)}] failed: {row['filename']}", 2)
 
 
 def updateFileMeta(db, filename, attributes):

@@ -7,10 +7,40 @@ import argparse
 import datetime
 import base64
 import os
+import random
 
-from . import database, tags
+from . import database, tags, tvstation as tvstation_module
 from .utility import include_image, verbose
 from ._version import __version__
+
+
+def shorten_middle(s, max_len=55):
+    """Shorten a string by replacing the middle with '...', preferring word boundaries."""
+    if len(s) <= max_len:
+        return s
+    words = s.split(' ')
+    if len(words) == 1:
+        half = (max_len - 3) // 2
+        return s[:half] + '...' + s[-(max_len - 3 - half):]
+    half = (max_len - 3) // 2
+    front_words, front_len = [], 0
+    for w in words:
+        new_len = front_len + (1 if front_words else 0) + len(w)
+        if new_len > half:
+            break
+        front_words.append(w)
+        front_len = new_len
+    back_words, back_len = [], 0
+    for w in reversed(words):
+        new_len = back_len + (1 if back_words else 0) + len(w)
+        if new_len > half:
+            break
+        back_words.insert(0, w)
+        back_len = new_len
+    if len(front_words) >= len(words) - len(back_words):
+        mid = len(words) // 2
+        front_words, back_words = words[:mid], words[mid + 1:]
+    return ' '.join(front_words) + '... ' + ' '.join(back_words)
 
 
 def helprow(f, key_html, desc):
@@ -280,14 +310,17 @@ def writeMoviesImageTitle(db, f, collection, gfxmode):
 
     orderBy = "strftime('%Y%m%d', added, 'unixepoch') DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
     movies = database.getMovies(db, whereSql, orderBy, "0,45")
+    poster_map = database.get_movie_attachments_bulk(db, [m['id'] for m in movies], 'poster')
     f.write('<section id="new1">\n')
     for m in movies:
         oid = m['oid']
         title = m['title']
         year = m['year']
         score = int(m['score'])
-        if m['poster']:
-            htmlsrc, htmlwidth, htmlheight = include_image(m['poster'], gfxmode, imgpath, 84, 126)
+        poster_list = poster_map.get(m['id'], [])
+        poster_data = bytes(poster_list[0]['data']) if poster_list else None
+        if poster_data:
+            htmlsrc, htmlwidth, htmlheight = include_image(poster_data, gfxmode, imgpath, 84, 126)
             posterhtml = f"<a href=\"#{oid}\"><img width=\"{htmlwidth}\" height=\"{htmlheight}\" title=\"{title} [{year}; {score}%]\" src=\"{htmlsrc}\" /></a>"
         else:
             # poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
@@ -300,18 +333,21 @@ def writeMoviesImageTitle(db, f, collection, gfxmode):
 
     if whereSql != "":
         whereSql = whereSql + " AND "
-    whereSql = whereSql + "NOT (poster IS NULL) AND (score < 100)"
+    whereSql = whereSql + "m.id IN (SELECT ref_id FROM attachments WHERE type = 'poster') AND (score < 100)"
     orderBy = "score DESC, year DESC, m.title COLLATE NOCASE ASC"
 
     movies = database.getMovies(db, whereSql, orderBy, "0,60")
+    poster_map = database.get_movie_attachments_bulk(db, [m['id'] for m in movies], 'poster')
     f.write('<section id="top1">\n')
     for m in movies:
         oid = m['oid']
         title = m['title']
         year = m['year']
         score = int(m['score'])
-        if m['poster']:
-            htmlsrc, htmlwidth, htmlheight = include_image(m['poster'], gfxmode, imgpath, 84, 126)
+        poster_list = poster_map.get(m['id'], [])
+        poster_data = bytes(poster_list[0]['data']) if poster_list else None
+        if poster_data:
+            htmlsrc, htmlwidth, htmlheight = include_image(poster_data, gfxmode, imgpath, 84, 126)
             posterhtml = f"<a href=\"#{oid}\"><img width=\"{htmlwidth}\" height=\"{htmlheight}\" title=\"{title} [{year}; {score}%]\" src=\"{htmlsrc}\" /></a>"
         else:
             poster = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
@@ -350,6 +386,16 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
     imgpath = os.path.join(os.path.dirname(f.name), imgdir)
 
     movies = database.getMovies(db, whereSql, "m.title_normalized COLLATE NOCASE ASC, year ASC", None)
+    movie_ids = [m['id'] for m in movies]
+    poster_map = database.get_movie_attachments_bulk(db, movie_ids, 'poster')
+    collections_map = database.getCollections_bulk(db, movie_ids)
+    cast_map = database.getCast_bulk(db, movie_ids, limit=15)
+    crew_map = database.getCrew_bulk(db, movie_ids, "job='Director'", limit=15)
+    if fileDetail == 1:
+        all_file_ids = [col['id'] for cols in collections_map.values() for col in cols]
+        screenshot_map = database.get_file_attachments_bulk(db, all_file_ids, 'screenshot')
+    else:
+        screenshot_map = {}
     f.write('<section id="movies">')
     for m in movies:
         id = m['id']
@@ -369,8 +415,19 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
         tmdbid = m['tmdb_id']
         score = int(m['score'])
         scorecolor = movieRatingColor(score)
-        if m['poster']:
-            htmlsrc, htmlwidth, htmlheight = include_image(m['poster'], gfxmode, imgpath)
+        collections = collections_map.get(id, [])
+        tvstation_logo_html = ""
+        for col in collections:
+            if col["tvstation"]:
+                logo = tvstation_module.get_logo(col["tvstation"])
+                if logo:
+                    station_name = tvstation_module.display_name(col["tvstation"])
+                    tvstation_logo_html = f'<img src="data:image/png;base64,{logo}" style="float:right;max-height:1em;max-width:53px;opacity:0.5;" title="{station_name}" />'
+                    break
+        poster_list = poster_map.get(m['id'], [])
+        poster_data = bytes(poster_list[0]['data']) if poster_list else None
+        if poster_data:
+            htmlsrc, htmlwidth, htmlheight = include_image(poster_data, gfxmode, imgpath)
             posterhtml = f"<a href=\"https://www.themoviedb.org/movie/{tmdbid}\"><img title=\"{title}\" width=\"{htmlwidth}\" height=\"{htmlheight}\" src=\"{htmlsrc}\" /></a>"
         else:
             posterhtml = "&nbsp;"
@@ -378,14 +435,11 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
         if m["title_orig"] != m['title']:
             titleext = f" <span class='origtitle'>({title_orig})</span>"
         actors = directors = ""
-        cast = database.getCast(db, id, "0,15")
-        for person in cast:
+        for person in cast_map.get(id, []):
             actors = actors + '<a href="#' + str(person['oid']) + '" title="' + str(int(person['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + person['name'] + '</a> '
-        crew = database.getCrew(db, id, "job='Director'", "0,15")
-        for person in crew:
+        for person in crew_map.get(id, []):
             directors = directors + '<a href="#' + str(person['oid']) + '" title="Regie" style="text-decoration:none" class="badge bg-secondary">' + person['name'] + '</a> '
         collectionstr = combinedstr = metadatastr = ""
-        collections = database.getCollections(db, id)
         for col in collections:
             if col['collection'] is not None:
                 colstr = col['collection']
@@ -402,11 +456,14 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
                 copyhtmlstr = ""
             else:
                 screenshothtml = f"{col['filename']}"
-                if col["screenshot"]:
-                    screenshot = base64.b64encode(col['screenshot']).decode('ascii')
-                    screenshothtml = f"<img alt='Screencapture' src='data:image/png;base64,{screenshot}' />"
+                attachments = screenshot_map.get(col["id"], [])
+                screenshot_count = len(attachments)
+                if attachments:
+                    screenshot = base64.b64encode(bytes(random.choice(attachments)["data"])).decode('ascii')
+                    screenshothtml = f"<img alt='Screencapture' src='data:image/jpeg;base64,{screenshot}' />"
                 collectionstr = collectionstr + f"<a class=\"badge bg-secondary fixed-badge fw-100\" data-container=\"body\" style=\"text-decoration:none\" href=\"{urlPrefix}{col['filename']}\">{colstr}</a> "
-                copyhtmlstr = f"<span class=\"badge bg-secondary\" title=\"Dateinamen kopieren\" onclick=\"copyToClipboard('{col['filename']}', this)\"><span class='icon'>📋 {col['filename']}</span></span> "
+                filename_js = col['filename'].replace("\\", "\\\\").replace("'", "\\'")
+                copyhtmlstr = f"<span class=\"badge bg-secondary\" title=\"Dateinamen kopieren\" onclick=\"copyToClipboard('{filename_js}', this)\"><span class='icon'>📋 {shorten_middle(col['filename'])}</span></span> "
                 metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Größe\">🗎 {colsize}</span> "
                 if col['ctime'] > col['added']:
                     metadatastr = metadatastr + f"<span class=\"badge bg-info\" title=\"Datei (Datenbank {dbtime})\">{fctime}</span> "
@@ -416,12 +473,13 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
                     duration = "{:.0f}".format(col['duration'] / 60)
                     metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"Länge\">🕐 {duration} min</span> "
                 if col["width"] is not None:
+                    res_label = f"[{screenshot_count}] {col['width']}x{col['height']}" if screenshot_count else f"{col['width']}x{col['height']}"
                     if col["width"] >= 1920 or col["height"] >= 1080:
-                        metadatastr = metadatastr + f"<span class=\"badge bg-success fixed-badge fw-100\" title=\"{screenshothtml}\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\">🖵 {col['width']}x{col['height']}</span> "
+                        metadatastr = metadatastr + f"<span class=\"badge bg-success fixed-badge fw-120\" title=\"{screenshothtml}\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\">🖵 {res_label}</span> "
                     elif col["width"] >= 1280 or col["height"] >= 720:
-                        metadatastr = metadatastr + f"<span class=\"badge bg-secondary fixed-badge fw-100\" title=\"{screenshothtml}\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\">🖵 {col['width']}x{col['height']}</span> "
+                        metadatastr = metadatastr + f"<span class=\"badge bg-secondary fixed-badge fw-120\" title=\"{screenshothtml}\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\">🖵 {res_label}</span> "
                     else:
-                        metadatastr = metadatastr + f"<span class=\"badge bg-warning fixed-badge fw-100\" title=\"{screenshothtml}\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\">🖵 {col['width']}x{col['height']}</span> "
+                        metadatastr = metadatastr + f"<span class=\"badge bg-warning fixed-badge fw-120\" title=\"{screenshothtml}\" data-bs-toggle=\"tooltip\" data-bs-html=\"true\">🖵 {res_label}</span> "
                 if col["codec"] is not None:
                     if col["codec"] == "hevc":
                         metadatastr = metadatastr + "<span class=\"badge bg-success\" title=\"Codec\">H.265</span> "
@@ -434,7 +492,7 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
                 else:
                     metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"DbMovieID={movieid} DbFileID={fileid}\">ID</span> "
                 if col["tvstation"] is not None:
-                    metadatastr = metadatastr + f"<span class=\"badge bg-secondary\" title=\"TV-Station\">{col['tvstation']}</span> "
+                    metadatastr = metadatastr + f"<span class=\"badge bg-success\" title=\"TV-Station\">{tvstation_module.display_name(col['tvstation'])}</span> "
             #metadatastr = metadatastr + "<br />"
             combinedstr = combinedstr + collectionstr + metadatastr + copyhtmlstr + "<br />"
             collectionstr = metadatastr = "" # diryt hack to get combinedstr working; replaces collectionstr+metadatastr in future
@@ -457,7 +515,7 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
                 <div class="row row-striped p-3" data-search='[{title_escaped}]'>
                     <div class="col-2">{posterhtml}</div>
                     <div class="col-10">
-                        <h3 id="{m['oid']}">{titlecombined}</h3>
+                        <h3 id="{m['oid']}">{tvstation_logo_html}{titlecombined}</h3>
                         <div class="description">
                             {datastringhtml}{descriptionhtml}
                             <p>{combinedstr}</p>
@@ -504,6 +562,9 @@ def writeActorsDetail(db, f, collection, gfxmode):
     imgpath = os.path.join(os.path.dirname(f.name), imgdir)
 
     actors = database.getActors(db, whereSql)
+    actor_ids = [a['id'] for a in actors]
+    profile_map = database.get_actor_attachments_bulk(db, actor_ids, 'profile')
+    movies_by_actor = database.getMoviesByActor_bulk(db, actor_ids)
 
     f.write('<h3 id="person">Menschen</h3>')
     f.write('<section id="persons">')
@@ -521,12 +582,14 @@ def writeActorsDetail(db, f, collection, gfxmode):
         popularityhtml = f'<dl><dt>Popularität</dt><dd><span class="badge bg-{popcolor}">{popularity}</span></dd></dl>'
         if popularity == 0:
             popularityhtml = "&nbsp;"
-        if a['profile']:
-            htmlsrc, htmlwidth, htmlheight = include_image(a['profile'], gfxmode, imgpath, 38, 59)
+        profile_list = profile_map.get(a['id'], [])
+        profile_data = bytes(profile_list[0]['data']) if profile_list else None
+        if profile_data:
+            htmlsrc, htmlwidth, htmlheight = include_image(profile_data, gfxmode, imgpath, 38, 59)
             profilehtml = f"<a href=\"https://www.themoviedb.org/person/{tmdbid}\"><img width=\"{htmlwidth}\" height=\"{htmlheight}\" title=\"{name}\" src=\"{htmlsrc}\" /></a>"
         else:
             profilehtml = "&nbsp;"
-        movies = database.getMoviesByActor(db, id)
+        movies = movies_by_actor.get(id, [])
         if actorListedChoice(len(movies), popularity):
             i = i + 1
             f.write(f"""
