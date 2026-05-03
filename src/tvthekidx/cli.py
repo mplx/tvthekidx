@@ -68,7 +68,7 @@ def maintenance(args, remaining=None):
         from . import tvstation
         model = tvstation.load_model()
         if model is None:
-            print("ERROR: model file 'best.pt' not found")
+            print("ERROR: ultralytics is not installed or model file not found (pip install 'tvthekidx[tvstation]')")
             sys.exit(2)
         tvstation.backfill_tvstation(db, model)
     elif args.action == "cleartvstations":

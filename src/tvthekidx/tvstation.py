@@ -126,7 +126,10 @@ def detect_tvstation_from_filename(filename):
 
 
 def load_model(model_path=None):
-    from ultralytics import YOLO
+    try:
+        from ultralytics import YOLO
+    except ImportError:
+        return None
     path = model_path or _DEFAULT_MODEL
     if not os.path.isfile(path):
         return None

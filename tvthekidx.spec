@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import copy_metadata
 
 block_cipher = None
 
@@ -6,7 +7,7 @@ a = Analysis(
     [ 'tvthekidx.py' ],
     pathex=[],
     binaries=[],
-    datas=[("src/tvthekidx/tvstation.pt", "tvthekidx")],
+    datas=[("src/tvthekidx/tvstation.pt", "tvthekidx")] + copy_metadata('imageio'),
     hiddenimports=[ "tmdbv3api", "ipaddress" ],
     hookspath=[],
     hooksconfig={},
