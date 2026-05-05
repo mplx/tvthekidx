@@ -2,11 +2,11 @@
 
 Generates an index of tvthek/mediathek downloaded content and queries [TMDB](https://www.themoviedb.org/) for the meta data
 
-![TVthe(k)Index Logo](./docs/assets/tvthekidx.png)
+![TVthe(k)Index Logo](https://raw.githubusercontent.com/mplx/tvthekidx/main/docs/assets/tvthekidx.png)
 
 ## Example
 
-[![TVthe(k)Index Sample](./docs/assets/sample.png)](https://peach.blender.org/)
+[![TVthe(k)Index Sample](https://raw.githubusercontent.com/mplx/tvthekidx/main/docs/assets/sample.png)](https://peach.blender.org/)
 
 ## Usage (version 0.5.0)
 
@@ -14,61 +14,35 @@ Generates an index of tvthek/mediathek downloaded content and queries [TMDB](htt
 
 Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www.themoviedb.org/documentation/api).
 
-### from binary (windows)
+### from PyPI
 
-1. download binaries from [packages](https://gitlab.mplx.eu/scripts/tvthekidx/-/packages) and rename to `tvthekidx.exe`
+1. install
+
+`pip install tvthekidx`
 
 2. create database
 
-`tvthekidx.exe -v maintenance -d tvthek.db -a createdb`
+`tvthekidx -v maintenance -d tvthek.db -a createdb`
 
 3. run the indexer
 
-`tvthekidx.exe -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p x:\TVThek --recursive`
+`tvthekidx -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --recursive`
 
 (insert your TMDB API key instead of `APIKEY`)
 
 4. generate the html file
 
-`tvthekidx.exe export -d tvthek.db -c "TVthek" -f html --title "TVthek" --output tvthek.html`
+`tvthekidx export -d tvthek.db -c "TVthek" -f html --title "TVthek" --output tvthek.html`
 
 5. if you add or remove content run steps 3 + 4 again
 
 6. occasionally run database maintenance
 
-`tvthekidx.exe -v maintenance -d tvthek.db -a compressdb`
-
-### from binary (linux)
-
-1. download binaries from [packages](https://gitlab.mplx.eu/scripts/tvthekidx/-/packages) and rename to `tvthekidx`
-
-2. make tvthekidx executable
-
-`chmod +x tvthekidx`
-
-3. create database
-
-`./tvthekidx -v maintenance -d tvthek.db -a createdb`
-
-4. run the indexer
-
-`./tvthekidx -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --recursive`
-
-(insert your TMDB API key instead of `APIKEY`)
-
-5. generate the html file
-
-`./tvthekidx export -d tvthek.db -c "TVthek" -f html --title "TVthek" --output tvthek.html`
-
-6. if you add or remove content run steps 4 + 5 again
-
-7. occasionally run database maintenance
-
-`./tvthekidx -v maintenance -d tvthek.db -a compressdb`
+`tvthekidx -v maintenance -d tvthek.db -a compressdb`
 
 ### from python source
 
-1. download source code from [releases](https://gitlab.mplx.eu/scripts/tvthekidx/-/releases)
+1. download source code from [tags](https://github.com/mplx/tvthekidx/tags)
 
 2. install requirements
 
