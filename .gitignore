@@ -7,3 +7,4 @@ eggs/
 _version.py
 .ropeproject
 .vscode
+dev/

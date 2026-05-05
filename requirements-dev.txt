@@ -2,5 +2,5 @@ build>=1.0.0
 flake8
 pylint
 pyinstaller>=6.15.0
-setuptools>=77
-setuptools_scm>=8.0
+hatchling
+hatch-vcs
