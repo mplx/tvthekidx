@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.5.0] - 2026-05-03
+## [0.5.0] - 2026-05-05
 
 ### Added
 - Export plugin system — format selectable via `--format`; `html` and `text` plugins included

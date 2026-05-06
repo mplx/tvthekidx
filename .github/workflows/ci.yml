@@ -23,3 +23,25 @@ jobs:
 
       - name: Lint — flake8
         run: flake8 src/tvthekidx/*.py --ignore=E501,E722 --statistics --count
+
+  test:
+    name: Test (trixie)
+    runs-on: ubuntu-latest
+    container:
+      image: python:3-slim-trixie
+    steps:
+      - name: Install git
+        run: apt-get update -qq && apt-get install -y --no-install-recommends git
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install dependencies
+        run: pip install pytest && pip install -e .
+
+      - name: Run tests
+        run: pytest

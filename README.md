@@ -119,6 +119,17 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 - `-r`, `--regex` regular expression pattern matched against filenames
 - `--all` delete all tags (use with `--action delete`)
 
+## Development
+
+```bash
+pip install -e .                 # install with runtime dependencies
+pip install -r requirements-dev.txt  # dev tools (pytest, flake8, pylint, build)
+pytest                           # run unit tests
+flake8 src/
+pylint src/
+python -m build                  # build sdist + wheel
+```
+
 ## What's new in 0.5.0
 
 - **Export plugin system** — export format is now selectable via `--format`; `html` and `text` plugins included
