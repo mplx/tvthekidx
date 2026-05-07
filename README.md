@@ -108,8 +108,14 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
   - `cleartvstations` — remove all TV station assignments
   - `getscreenshots` — capture/backfill screenshots for files (requires `-p`)
   - `clearscreenshots` — delete all stored screenshots
+  - `backfillgenres` — fetch genres from TMDB for all movies that don't have them yet (requires `-k`, optional `-l`)
+  - `refreshmovie` — re-fetch all metadata (description, rating, poster, genres, cast/crew) for one movie from TMDB (requires `-k` and `--tmdb-id`)
+  - `resetcounters` — reset cast and genre error counters to zero
 - `-p`, `--path` path to video files (required for `getscreenshots`)
 - `-c`, `--collection` collection filter (optional for `getscreenshots`)
+- `-k`, `--key` TMDB API key (required for `backfillgenres` and `refreshmovie`)
+- `--tmdb-id` TMDB movie ID (required for `refreshmovie`)
+- `-l`, `--limit` maximum number of movies to process per run (for `backfillgenres`, to stay within TMDB API rate limits)
 
 ## `tags` arguments
 
@@ -129,14 +135,3 @@ flake8 src/
 pylint src/
 python -m build                  # build sdist + wheel
 ```
-
-## What's new in 0.5.0
-
-- **Export plugin system** — export format is now selectable via `--format`; `html` and `text` plugins included
-- **TV station detection** — screenshots are analysed with a convolutional neural network (CNN) to identify the recording channel; logos are embedded in the HTML export
-- **Tags** — regex-based file tagging with the new `tags` subcommand
-- **`maintenance` subcommand** — replaces `database`; adds `detecttvstations`, `cleartvstations`, `getscreenshots`, `clearscreenshots` actions
-- **`--graphics` export option** — choose between embedded base64, external file references, or disabled images
-- **HTML export performance** — ~7× faster; bulk SQL queries replace per-movie/per-file round-trips; SQLite mmap and page-cache tuning cuts system time by ~190×
-- **Database schema v8** — all binary attachments (posters, actor profiles, screenshots) unified in a single `attachments` table with a composite index on `(ref_id, type)`
-- **CI pipeline upgraded to Debian trixie** — build image updated to `python:3-slim-trixie`; test matrix updated to bookworm and trixie; win64 removed

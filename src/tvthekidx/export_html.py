@@ -392,6 +392,7 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
     collections_map = database.getCollections_bulk(db, movie_ids)
     cast_map = database.getCast_bulk(db, movie_ids, limit=15)
     crew_map = database.getCrew_bulk(db, movie_ids, "job='Director'", limit=15)
+    genre_map = database.getGenres_bulk(db, movie_ids)
     if fileDetail == 1:
         all_file_ids = [col['id'] for cols in collections_map.values() for col in cols]
         screenshot_map = database.get_file_attachments_bulk(db, all_file_ids, 'screenshot')
@@ -511,7 +512,8 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
             titlecombined = title + titleext
         else:
             titlecombined = title
-        datastringhtml = f"<p><span class=\"badge bg-secondary\">{year}</span> <span class=\"badge bg-{scorecolor}\">{score}</span> {directors} {actors}</p>"
+        genrestr = "".join(f'<span class="badge bg-dark me-1">{g["name"]}</span>' for g in genre_map.get(id, []))
+        datastringhtml = f"<p><span class=\"badge bg-secondary\">{year}</span> <span class=\"badge bg-{scorecolor}\">{score}</span> {genrestr} {directors} {actors}</p>"
         f.write(f"""
                 <div class="row row-striped p-3" data-search='[{title_escaped}]'>
                     <div class="col-2">{posterhtml}</div>

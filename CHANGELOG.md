@@ -1,5 +1,20 @@
 # Changelog
 
+## [unreleased]
+
+### Added
+- Genre support — genres fetched from TMDB and stored in `genres` / `movies_genres` tables; displayed as badges in HTML export
+- `backfillgenres` maintenance action — fetches genres for existing movies that have none (requires `--key`, optional `--limit`)
+- `refreshmovie` maintenance action — re-fetches description, rating, poster, genres, cast, and crew for a single movie (`--key`, `--tmdb-id`)
+- `resetcounters` maintenance action — resets cast and genre error counters to zero for all movies
+- Error counters (`cast_error_count`, `genre_error_count`) on movies — movies that return no results from TMDB are skipped after 3 consecutive failures per category
+- GitHub Release automation — pushing a version tag creates a release with auto-generated notes, Linux binary, and source distribution
+
+### Changed
+- Database schema v9
+
+---
+
 ## [0.5.0] - 2026-05-05
 
 ### Added

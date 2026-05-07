@@ -8,6 +8,7 @@ from tvthekidx.database import (
     count_file_attachments, delete_file_attachments,
     add_movie_attachment, get_movie_attachments,
     add_actor_attachment, get_actor_attachments,
+    addGenreToDb, addGenreToMovieDb, getGenres_bulk,
     getCast, cleanup_db,
 )
 
@@ -47,17 +48,17 @@ class TestInitializeDb:
         cur = db.cursor()
         for table in ("movies", "files", "actors", "actors_movies",
                       "crew_movies", "attachments", "tags", "tags_regex",
-                      "files_tags", "settings"):
+                      "files_tags", "settings", "genres", "movies_genres"):
             cur.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
                 (table,)
             )
             assert cur.fetchone() is not None, f"Missing table: {table}"
 
-    def test_schema_version_is_8(self, db):
+    def test_schema_version_is_9(self, db):
         cur = db.cursor()
         cur.execute("SELECT value_int FROM settings WHERE dbkey='dbversion'")
-        assert cur.fetchone()[0] == 8
+        assert cur.fetchone()[0] == 9
 
     def test_existing_db_reopens(self, tmp_path):
         path = str(tmp_path / "existing.db")
@@ -183,3 +184,50 @@ class TestAttachments:
         rows = get_movie_attachments(db, mid, "poster")
         assert len(rows) == 1
         assert bytes(rows[0]["data"]) == b"POSTER"
+
+
+class TestGenres:
+    def test_add_genre_returns_id(self, db):
+        gid = addGenreToDb(db, 28, "Action")
+        assert isinstance(gid, int) and gid > 0
+
+    def test_add_genre_idempotent(self, db):
+        gid1 = addGenreToDb(db, 28, "Action")
+        gid2 = addGenreToDb(db, 28, "Action")
+        assert gid1 == gid2
+
+    def test_add_genre_to_movie(self, db):
+        mid = addMovieToDb(db, _MOVIE)
+        db.commit()
+        gid = addGenreToDb(db, 28, "Action")
+        addGenreToMovieDb(db, mid, gid)
+        db.commit()
+        rows = getGenres_bulk(db, [mid])
+        assert mid in rows
+        assert rows[mid][0]["name"] == "Action"
+
+    def test_add_genre_to_movie_idempotent(self, db):
+        mid = addMovieToDb(db, _MOVIE)
+        db.commit()
+        gid = addGenreToDb(db, 28, "Action")
+        addGenreToMovieDb(db, mid, gid)
+        addGenreToMovieDb(db, mid, gid)
+        db.commit()
+        rows = getGenres_bulk(db, [mid])
+        assert len(rows[mid]) == 1
+
+    def test_get_genres_bulk_empty(self, db):
+        assert getGenres_bulk(db, []) == {}
+
+    def test_get_genres_bulk_multiple_movies(self, db):
+        mid1 = addMovieToDb(db, _MOVIE)
+        mid2 = addMovieToDb(db, dict(_MOVIE, title="Other", tmdb_id=99999))
+        db.commit()
+        gid_action = addGenreToDb(db, 28, "Action")
+        gid_drama = addGenreToDb(db, 18, "Drama")
+        addGenreToMovieDb(db, mid1, gid_action)
+        addGenreToMovieDb(db, mid2, gid_drama)
+        db.commit()
+        rows = getGenres_bulk(db, [mid1, mid2])
+        assert rows[mid1][0]["name"] == "Action"
+        assert rows[mid2][0]["name"] == "Drama"

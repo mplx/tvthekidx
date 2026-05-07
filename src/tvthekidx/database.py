@@ -284,8 +284,19 @@ def upgrade_db(db_file):
 
         execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
 
-    " up-to-date "
+    " genres, error counters "
     if DBVERSION == 8:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+
+        execute_sql(conn, 'CREATE TABLE "genres" ("id" INTEGER NOT NULL, "tmdb_id" INTEGER NOT NULL UNIQUE, "name" TEXT NOT NULL, "oid" TEXT DEFAULT NULL, PRIMARY KEY("id" AUTOINCREMENT))', None, True)
+        execute_sql(conn, 'CREATE TABLE "movies_genres" ("movie_id" INTEGER NOT NULL, "genre_id" INTEGER NOT NULL, PRIMARY KEY("movie_id","genre_id"), FOREIGN KEY("movie_id") REFERENCES "movies"("id"), FOREIGN KEY("genre_id") REFERENCES "genres"("id"))', None, True)
+        execute_sql(conn, "ALTER TABLE movies ADD COLUMN cast_error_count INTEGER DEFAULT 0", None, True)
+        execute_sql(conn, "ALTER TABLE movies ADD COLUMN genre_error_count INTEGER DEFAULT 0", None, True)
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+
+    " up-to-date "
+    if DBVERSION == 9:
         verbose("Database up-to-date", 1)
 
 
@@ -446,6 +457,11 @@ def clear_screenshots(db):
     db.commit()
 
 
+def reset_error_counters(db):
+    execute_sql(db, "UPDATE movies SET cast_error_count = 0, genre_error_count = 0", None, True)
+    verbose("Error counters reset", 1)
+
+
 def add_movie_attachment(db, movie_id, att_type, data):
     cur = db.cursor()
     cur.execute("INSERT INTO attachments (type, data, ref_id) VALUES (?, ?, ?)", (att_type, sqlite3.Binary(data), movie_id))
@@ -565,6 +581,72 @@ def assignMovieToFile(db, fid, mid):
     return True
 
 
+def refresh_movie(db, movie_api, tmdbid):
+    cur = execute_sql(db, "SELECT id FROM movies WHERE tmdb_id = ?", (tmdbid,))
+    row = cur.fetchone()
+    if row is None:
+        verbose(f"Movie with TMDB ID {tmdbid} not found in database", 1)
+        return False
+    mid = row['id']
+
+    result = online.query_movie_by_id(movie_api, tmdbid)
+    if result is None:
+        verbose(f"Could not fetch TMDB data for ID {tmdbid}", 1)
+        return False
+
+    release_year = result['release_date'][0:4] if result.get('release_date') else None
+    execute_sql(db,
+                "UPDATE movies SET title=?, title_orig=?, title_normalized=?, year=?, description=?, popularity=?, score=? WHERE id=?",
+                (result['title'], result['original_title'], normalize_string(result['title']),
+                 release_year, result['overview'] or None,
+                 result['popularity'], result['vote_average'] * 10, mid))
+
+    poster_path = result.get('poster_path')
+    verbose(f"Poster path from TMDB: {poster_path}", 2)
+    poster_data = None
+    if poster_path:
+        try:
+            poster_data = online.fetchPoster(poster_path)
+        except Exception as e:
+            verbose(f"Failed to fetch poster: {e}", 1)
+    if poster_data:
+        db.cursor().execute("DELETE FROM attachments WHERE ref_id = ? AND type = 'poster'", (mid,))
+        add_movie_attachment(db, mid, 'poster', poster_data)
+    else:
+        verbose("No poster available for this movie", 2)
+
+    execute_sql(db, "DELETE FROM movies_genres WHERE movie_id = ?", (mid,))
+    genres = online.query_genres(movie_api, tmdbid)
+    storeMovieGenres(db, mid, genres)
+
+    cast, crew = online.query_cast(movie_api, tmdbid)
+
+    execute_sql(db, "DELETE FROM actors_movies WHERE m_id = ?", (mid,))
+    execute_sql(db, "DELETE FROM crew_movies WHERE m_id = ?", (mid,))
+
+    for person in cast:
+        aid = addActorToDb(db, person)
+        execute_sql(db, "UPDATE actors SET name=?, popularity=? WHERE id=?",
+                    (person['name'], person['popularity'], aid))
+        if person.get('profile'):
+            db.cursor().execute("DELETE FROM attachments WHERE ref_id = ? AND type = 'profile'", (aid,))
+            add_actor_attachment(db, aid, 'profile', person['profile'])
+        addActorToMovieDb(db, mid, aid)
+
+    for person in crew:
+        aid = addActorToDb(db, person)
+        execute_sql(db, "UPDATE actors SET name=?, popularity=? WHERE id=?",
+                    (person['name'], person['popularity'], aid))
+        if person.get('profile'):
+            db.cursor().execute("DELETE FROM attachments WHERE ref_id = ? AND type = 'profile'", (aid,))
+            add_actor_attachment(db, aid, 'profile', person['profile'])
+        addCrewToMovieDb(db, mid, aid, person['job'])
+
+    db.commit()
+    verbose(f"Movie {tmdbid} refreshed", 1)
+    return True
+
+
 def scanMovies(db, search):
     selectSQL = "SELECT id, filename FROM files WHERE (movie_id IS NULL or movie_id=0) ORDER BY filename ASC"
     cur = execute_sql(db, selectSQL)
@@ -649,19 +731,76 @@ def addCrewToMovieDb(db, mid, aid, job):
     return True
 
 
+def addGenreToDb(db, tmdb_id, name):
+    cur = execute_sql(db, "SELECT id FROM genres WHERE tmdb_id = ?", (tmdb_id,))
+    row = cur.fetchone()
+    if row is None:
+        oid = generate_oid("genre", str(tmdb_id))
+        result = execute_sql(db, "INSERT INTO genres(tmdb_id, name, oid) VALUES (?, ?, ?)", (tmdb_id, name, oid))
+        return result.lastrowid
+    return row['id']
+
+
+def addGenreToMovieDb(db, movie_id, genre_id):
+    cur = execute_sql(db, "SELECT 1 FROM movies_genres WHERE movie_id = ? AND genre_id = ?", (movie_id, genre_id))
+    if cur.fetchone() is None:
+        execute_sql(db, "INSERT INTO movies_genres(movie_id, genre_id) VALUES (?, ?)", (movie_id, genre_id))
+
+
+def storeMovieGenres(db, movie_id, genres):
+    for genre in genres:
+        gid = addGenreToDb(db, genre['id'], genre['name'])
+        addGenreToMovieDb(db, movie_id, gid)
+    db.commit()
+
+
+def getGenres_bulk(db, movie_ids):
+    if not movie_ids:
+        return {}
+    ph = ",".join("?" * len(movie_ids))
+    cur = db.cursor()
+    cur.execute(
+        f"SELECT g.id, g.name, g.tmdb_id, mg.movie_id FROM movies_genres mg JOIN genres g ON mg.genre_id = g.id WHERE mg.movie_id IN ({ph}) ORDER BY g.name ASC",
+        list(movie_ids))
+    result = {}
+    for row in cur.fetchall():
+        result.setdefault(row["movie_id"], []).append(row)
+    return result
+
+
+def scanGenres(db, movie, limit=None):
+    verbose("Scanning for genres...", 2)
+    sql = "SELECT id, tmdb_id, title FROM movies WHERE tmdb_id IS NOT NULL AND genre_error_count < 3 AND id NOT IN (SELECT DISTINCT movie_id FROM movies_genres) ORDER BY title ASC"
+    if limit:
+        sql += f" LIMIT {limit}"
+    cur = execute_sql(db, sql)
+    for row in cur.fetchall():
+        verbose(f"Fetching genres for {row['title']}", 2)
+        genres = online.query_genres(movie, row['tmdb_id'])
+        if genres:
+            storeMovieGenres(db, row['id'], genres)
+        else:
+            execute_sql(db, "UPDATE movies SET genre_error_count = genre_error_count + 1 WHERE id = ?", (row['id'],), True)
+            verbose(f"No genres returned for {row['title']}, error count incremented", 2)
+
+
 def scanCredits(db, movie):
     verbose("Scanning for cast and crew...", 2)
-    selectSQL = "SELECT id, title, tmdb_id FROM movies WHERE tmdb_id IS NOT NULL AND NOT (id IN (SELECT DISTINCT m_id FROM actors_movies UNION SELECT DISTINCT m_id FROM crew_movies)) ORDER BY title ASC"
+    selectSQL = "SELECT id, title, tmdb_id FROM movies WHERE tmdb_id IS NOT NULL AND cast_error_count < 3 AND NOT (id IN (SELECT DISTINCT m_id FROM actors_movies UNION SELECT DISTINCT m_id FROM crew_movies)) ORDER BY title ASC"
     cur = execute_sql(db, selectSQL)
     for row in cur.fetchall():
         verbose("Lookup cast for " + row['title'], 2)
         cast, crew = online.query_cast(movie, row['tmdb_id'])
-        for person in cast:
-            aid = addActorToDb(db, person)
-            addActorToMovieDb(db, row['id'], aid)
-        for person in crew:
-            aid = addActorToDb(db, person)
-            addCrewToMovieDb(db, row['id'], aid, person['job'])
+        if not cast and not crew:
+            execute_sql(db, "UPDATE movies SET cast_error_count = cast_error_count + 1 WHERE id = ?", (row['id'],), True)
+            verbose(f"No cast returned for {row['title']}, error count incremented", 2)
+        else:
+            for person in cast:
+                aid = addActorToDb(db, person)
+                addActorToMovieDb(db, row['id'], aid)
+            for person in crew:
+                aid = addActorToDb(db, person)
+                addCrewToMovieDb(db, row['id'], aid, person['job'])
         db.commit()
     return None
 

@@ -31,6 +31,7 @@ def indexer(args, remaining=None):
     files.scanDir(db, args.collection, args.libPath, args.recursiveSearch)
     database.scanMovies(db, search)
     database.scanCredits(db, movie)
+    database.scanGenres(db, movie)
 
 
 def exporter(args, remaining):
@@ -74,6 +75,26 @@ def maintenance(args, remaining=None):
     elif args.action == "cleartvstations":
         from . import tvstation
         tvstation.clear_tvstation(db)
+
+    elif args.action == "backfillgenres":
+        if not args.tmdbApiKey:
+            print("ERROR: --key is required for backfillgenres")
+            sys.exit(2)
+        movie, _ = online.initialize_tmdb(args.tmdbApiKey)
+        database.scanGenres(db, movie, limit=args.limit)
+
+    elif args.action == "refreshmovie":
+        if not args.tmdbApiKey:
+            print("ERROR: --key is required for refreshmovie")
+            sys.exit(2)
+        if not args.tmdbId:
+            print("ERROR: --tmdb-id is required for refreshmovie")
+            sys.exit(2)
+        movie, _ = online.initialize_tmdb(args.tmdbApiKey)
+        database.refresh_movie(db, movie, args.tmdbId)
+
+    elif args.action == "resetcounters":
+        database.reset_error_counters(db)
 
     elif args.action == "clearscreenshots":
         database.clear_screenshots(db)
@@ -149,9 +170,12 @@ def main():
     maintenanceparser = subparsers.add_parser("maintenance", help="database and inference maintenance")
     maintenanceparser.set_defaults(func=maintenance)
     maintenanceparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
-    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots")
+    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots/backfillgenres/refreshmovie/resetcounters")
     maintenanceparser.add_argument("--path", "-p", action="store", dest="libPath", default=None, help="path to video files (required for getscreenshots)")
     maintenanceparser.add_argument("--collection", "-c", action="store", dest="collection", default=None, help="collection filter (optional for getscreenshots)")
+    maintenanceparser.add_argument("--key", "-k", action="store", dest="tmdbApiKey", default=None, help="TMDB API key (required for refreshmovie/backfillgenres)")
+    maintenanceparser.add_argument("--tmdb-id", action="store", dest="tmdbId", type=int, default=None, help="TMDB movie ID (required for refreshmovie)")
+    maintenanceparser.add_argument("--limit", "-l", action="store", dest="limit", type=int, default=None, help="max movies to process per run (for backfillgenres)")
 
     tagsparser = subparsers.add_parser("tags", help="file tagging")
     tagsparser.set_defaults(func=tagging)

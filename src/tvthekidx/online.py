@@ -78,6 +78,26 @@ def query_cast(movie, tmdbid):
     return cast, crew
 
 
+def query_movie_by_id(movie, tmdbid):
+    verbose(f'Querying movie details online: {tmdbid}', 2)
+    try:
+        return movie.details(tmdbid)
+    except Exception:
+        verbose(f'Error querying movie by ID: {tmdbid}')
+        return None
+
+
+def query_genres(movie, tmdbid):
+    verbose(f'Querying genres online: {tmdbid}', 2)
+    try:
+        result = movie.details(tmdbid)
+        genres = result.get('genres', [])
+        return [{"id": g['id'], "name": g['name']} for g in genres] if genres else []
+    except Exception:
+        verbose(f'Error querying genres for TMDB ID: {tmdbid}')
+        return []
+
+
 def query_movie(search, name, year):
     verbose(f'Querying movie online: {name} {year}', 2)
     query = {"query": name, "year": year}
