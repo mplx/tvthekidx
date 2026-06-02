@@ -15,22 +15,22 @@ def parse_args(remaining):
 
 
 def export(db, collection, args, plugin_args):
-    whereSql = ""
+    col_where = ""
+    col_params = []
     if collection:
-        whereSql = "("
-        for col in collection:
-            whereSql += f"(collection='{col}') OR "
-        whereSql = whereSql[:-4] + ")"
+        ph = ",".join("?" * len(collection))
+        col_where = f"f.collection_id IN (SELECT id FROM collections WHERE name IN ({ph}))"
+        col_params = list(collection)
 
     cur = db.cursor()
     selectSQL = (
         "SELECT DISTINCT m.title, m.year, f.tvstation "
         "FROM movies m JOIN files f ON m.id = f.movie_id"
     )
-    if whereSql:
-        selectSQL += f" WHERE {whereSql}"
+    if col_where:
+        selectSQL += f" WHERE {col_where}"
     selectSQL += " ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
-    cur.execute(selectSQL)
+    cur.execute(selectSQL, col_params)
     rows = cur.fetchall()
 
     lines = []

@@ -10,6 +10,7 @@ from tvthekidx.database import (
     add_actor_attachment, get_actor_attachments,
     addGenreToDb, addGenreToMovieDb, getGenres_bulk,
     getCast, cleanup_db,
+    create_or_get_collection,
 )
 
 _MOVIE = {
@@ -48,17 +49,18 @@ class TestInitializeDb:
         cur = db.cursor()
         for table in ("movies", "files", "actors", "actors_movies",
                       "crew_movies", "attachments", "tags", "tags_regex",
-                      "files_tags", "settings", "genres", "movies_genres"):
+                      "files_tags", "settings", "genres", "movies_genres",
+                      "collections"):
             cur.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
                 (table,)
             )
             assert cur.fetchone() is not None, f"Missing table: {table}"
 
-    def test_schema_version_is_9(self, db):
+    def test_schema_version_is_10(self, db):
         cur = db.cursor()
         cur.execute("SELECT value_int FROM settings WHERE dbkey='dbversion'")
-        assert cur.fetchone()[0] == 9
+        assert cur.fetchone()[0] == 10
 
     def test_existing_db_reopens(self, tmp_path):
         path = str(tmp_path / "existing.db")
@@ -129,27 +131,32 @@ class TestActors:
 
 class TestFiles:
     def test_add_new_returns_true(self, db):
-        assert addFileToDb(db, "Col", "movie.mkv", "/p") is True
+        col_id, _ = create_or_get_collection(db, "Col")
+        assert addFileToDb(db, col_id, "movie.mkv", "/p") is True
 
     def test_add_duplicate_returns_row(self, db):
-        addFileToDb(db, "Col", "movie.mkv", "/p")
-        result = addFileToDb(db, "Col", "movie.mkv", "/p")
+        col_id, _ = create_or_get_collection(db, "Col")
+        addFileToDb(db, col_id, "movie.mkv", "/p")
+        result = addFileToDb(db, col_id, "movie.mkv", "/p")
         assert result is not True
 
     def test_get_file_id(self, db):
-        addFileToDb(db, "Col", "film.mp4", "/media")
-        fid = get_file_id(db, "Col", "film.mp4", "/media")
+        col_id, _ = create_or_get_collection(db, "Col")
+        addFileToDb(db, col_id, "film.mp4", "/media")
+        fid = get_file_id(db, col_id, "film.mp4", "/media")
         assert isinstance(fid, int) and fid > 0
 
     def test_get_file_id_missing_returns_none(self, db):
-        assert get_file_id(db, "Col", "ghost.mp4", "/media") is None
+        col_id, _ = create_or_get_collection(db, "Col")
+        assert get_file_id(db, col_id, "ghost.mp4", "/media") is None
 
 
 class TestAttachments:
     @pytest.fixture
     def file_id(self, db):
-        addFileToDb(db, "Col", "f.mkv", "/p")
-        return get_file_id(db, "Col", "f.mkv", "/p")
+        col_id, _ = create_or_get_collection(db, "Col")
+        addFileToDb(db, col_id, "f.mkv", "/p")
+        return get_file_id(db, col_id, "f.mkv", "/p")
 
     def test_add_and_retrieve(self, db, file_id):
         add_file_attachment(db, file_id, "screenshot", b"\xff\xd8\xff")

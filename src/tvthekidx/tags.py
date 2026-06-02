@@ -146,12 +146,13 @@ def tag_add_by_filename(db, filename):
                     execute_sql(db, insertSQL, (f_id, tagid))
 
 
-def getMoviesByTagid(db, tagid, whereSql):
+def getMoviesByTagid(db, tagid, whereSql=None, params=None):
     selectSQL = "SELECT m.id AS id, m.oid AS oid, m.title AS title FROM movies m, files f, files_tags ft WHERE ft.t_id=? AND ft.f_id=f.id AND f.movie_id=m.id"
     if whereSql:
         selectSQL = f"{selectSQL} AND {whereSql}"
     selectSQL = f"{selectSQL} ORDER BY m.year ASC, m.title ASC"
-    cur = execute_sql(db, selectSQL, (tagid,))
+    all_params = [tagid] + ([*params] if params else [])
+    cur = execute_sql(db, selectSQL, all_params)
     return cur.fetchall() if cur else []
 
 

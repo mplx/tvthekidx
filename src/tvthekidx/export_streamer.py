@@ -1514,13 +1514,17 @@ def export(db, collection, args, plugin_args):
 
     # --- collection WHERE fragment ---
     col_where = ''
+    col_params = []
     if collection:
-        col_where = '(' + ' OR '.join(f"collection='{c}'" for c in collection) + ')'
+        ph = ','.join('?' * len(collection))
+        col_where = f"f.collection_id IN (SELECT id FROM collections WHERE name IN ({ph}))"
+        col_params = list(collection)
 
     # --- bulk-fetch all data ---
     verbose("Fetching data...", 1)
     movies     = database.getMovies(db, col_where or None,
-                                    'm.title_normalized COLLATE NOCASE ASC, year ASC')
+                                    'm.title_normalized COLLATE NOCASE ASC, year ASC',
+                                    params=col_params or None)
     movie_ids  = [m['id'] for m in movies]
     movie_by_id = {m['id']: m for m in movies}
 
@@ -1530,7 +1534,7 @@ def export(db, collection, args, plugin_args):
     genre_map       = database.getGenres_bulk(db, movie_ids)
     collections_map = database.getCollections_bulk(db, movie_ids)
 
-    actors      = database.getActors(db, col_where or None)
+    actors      = database.getActors(db, col_where or None, params=col_params or None)
     actor_ids   = [a['id'] for a in actors]
     profile_map = database.get_actor_attachments_bulk(db, actor_ids, 'profile')
     movies_by_actor = database.getMoviesByActor_bulk(db, actor_ids)
@@ -1547,7 +1551,7 @@ def export(db, collection, args, plugin_args):
     tag_sql = ('SELECT DISTINCT f.movie_id, ft.t_id FROM files_tags ft JOIN files f ON ft.f_id = f.id'
                + (f' WHERE {col_where}' if col_where else ''))
     cur = db.cursor()
-    cur.execute(tag_sql)
+    cur.execute(tag_sql, col_params)
     tag_by_movie = {}
     for row in cur.fetchall():
         tag_by_movie.setdefault(row[0], set()).add(row[1])
@@ -1618,11 +1622,15 @@ def export(db, collection, args, plugin_args):
     def _col_wh():
         return f' WHERE {col_where}' if col_where else ''
 
+    def _col_params():
+        return col_params if col_where else []
+
     # newest 20 movies
     cur.execute(
         f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id{_col_wh()} '
-        f'ORDER BY f.added DESC, m.title COLLATE NOCASE ASC LIMIT 20')
+        f'ORDER BY f.added DESC, m.title COLLATE NOCASE ASC LIMIT 20',
+        _col_params())
     newest_movies = cur.fetchall()
 
     # top 20 movies (has poster, score < 100)
@@ -1630,14 +1638,16 @@ def export(db, collection, args, plugin_args):
     cur.execute(
         f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id {wh} '
-        f'ORDER BY m.score DESC, m.title COLLATE NOCASE ASC LIMIT 20')
+        f'ORDER BY m.score DESC, m.title COLLATE NOCASE ASC LIMIT 20',
+        _col_params())
     top_movies = cur.fetchall()
 
     # random 250 movies (first 20 used for the index carousel, all 250 for random.html)
     cur.execute(
         f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id{_col_wh()} '
-        f'ORDER BY RANDOM() LIMIT 250')
+        f'ORDER BY RANDOM() LIMIT 250',
+        _col_params())
     random_250   = cur.fetchall()
     random_movies = random_250[:20]
 
@@ -1646,14 +1656,16 @@ def export(db, collection, args, plugin_args):
         f'SELECT m.id, m.oid, m.title, m.year, m.score, MAX(f.added) AS last_added '
         f'FROM movies m JOIN files f ON f.movie_id = m.id{_col_wh()} '
         f'GROUP BY m.id '
-        f'ORDER BY last_added DESC, m.title COLLATE NOCASE ASC LIMIT 250')
+        f'ORDER BY last_added DESC, m.title COLLATE NOCASE ASC LIMIT 250',
+        _col_params())
     newest_250 = cur.fetchall()
 
     wh250 = ('WHERE ' if not col_where else f'WHERE {col_where} AND ') + 'm.score < 100'
     cur.execute(
         f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id {wh250} '
-        f'ORDER BY m.score DESC, m.title COLLATE NOCASE ASC LIMIT 250')
+        f'ORDER BY m.score DESC, m.title COLLATE NOCASE ASC LIMIT 250',
+        _col_params())
     top_250 = cur.fetchall()
 
     # top 10 genres by movie count
@@ -1663,7 +1675,8 @@ def export(db, collection, args, plugin_args):
         f'JOIN movies_genres mg ON g.id = mg.genre_id '
         f'JOIN movies m ON mg.movie_id = m.id '
         f'JOIN files f ON f.movie_id = m.id{_col_wh()} '
-        f'GROUP BY g.id ORDER BY cnt DESC LIMIT 10')
+        f'GROUP BY g.id ORDER BY cnt DESC LIMIT 10',
+        _col_params())
     top_genres = cur.fetchall()
 
     # newest 20 movies per top genre (10 queries, one per genre)
@@ -1677,31 +1690,37 @@ def export(db, collection, args, plugin_args):
             f'JOIN files f ON f.movie_id = m.id '
             f'WHERE mg.genre_id = ?{and_col} '
             f'ORDER BY f.added DESC, m.title COLLATE NOCASE ASC LIMIT 20',
-            (g['id'],))
+            [g['id']] + _col_params())
         genre_newest[g['id']] = cur.fetchall()
 
     # popular 20 persons (actors already sorted by popularity DESC)
     popular_persons = [a for a in actors if a['id'] in qualified_actor_ids][:20]
 
-    # newest 20 persons
+    # newest 20 persons (≥2 movies in this collection, ordered by most-recently-added file)
     cur.execute(
-        f'SELECT DISTINCT a.id, a.oid, a.name, a.popularity, a.tmdb_id '
+        f'SELECT a.id, a.oid, a.name, a.popularity, a.tmdb_id '
         f'FROM actors a '
         f'JOIN actors_movies am ON a.id = am.a_id '
         f'JOIN movies m ON am.m_id = m.id '
         f'JOIN files f ON f.movie_id = m.id{_col_wh()} '
-        f'ORDER BY f.added DESC, a.popularity DESC LIMIT 100')
-    newest_persons = [a for a in cur.fetchall() if a['id'] in qualified_actor_ids][:20]
+        f'GROUP BY a.id '
+        f'HAVING COUNT(DISTINCT m.id) >= 2 '
+        f'ORDER BY MAX(f.added) DESC, a.popularity DESC LIMIT 20',
+        _col_params())
+    newest_persons = cur.fetchall()
 
-    # random 20 persons
+    # random 20 persons (≥2 movies in this collection)
     cur.execute(
-        f'SELECT DISTINCT a.id, a.oid, a.name, a.popularity, a.tmdb_id '
+        f'SELECT a.id, a.oid, a.name, a.popularity, a.tmdb_id '
         f'FROM actors a '
         f'JOIN actors_movies am ON a.id = am.a_id '
         f'JOIN movies m ON am.m_id = m.id '
         f'JOIN files f ON f.movie_id = m.id{_col_wh()} '
-        f'ORDER BY RANDOM() LIMIT 100')
-    random_persons = [a for a in cur.fetchall() if a['id'] in qualified_actor_ids][:20]
+        f'GROUP BY a.id '
+        f'HAVING COUNT(DISTINCT m.id) >= 2 '
+        f'ORDER BY RANDOM() LIMIT 20',
+        _col_params())
+    random_persons = cur.fetchall()
 
     # --- compute similarity ---
     verbose("Computing similarity scores...", 1)
@@ -1788,7 +1807,7 @@ def export(db, collection, args, plugin_args):
     # --- write tag pages ---
     verbose(f"Writing {len(tags_list)} tag pages...", 1)
     for t in tags_list:
-        t_movies_sorted = sorted(tags.getMoviesByTagid(db, t['id'], col_where or None),
+        t_movies_sorted = sorted(tags.getMoviesByTagid(db, t['id'], col_where or None, col_params or None),
                                  key=lambda m: m['title'].upper())
         path = os.path.join(targetpath, 'tags', f"{t['oid']}.html")
         _write_tag_page(path, t['tag'], t_movies_sorted, poster_uri_map, movie_by_id)

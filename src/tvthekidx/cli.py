@@ -102,12 +102,45 @@ def maintenance(args, remaining=None):
             verbose(f"Refreshing movie TMDB ID {args.tmdbId}")
             database.refresh_movie(db, movie, args.tmdbId)
         else:
-            verbose("Bulk refresh: top-20 by score + 20 random + 20 oldest-refreshed")
+            verbose("Bulk refresh: top-10 by score + 10 random + 10 oldest-refreshed")
             database.refresh_movies_bulk(db, movie)
 
     elif args.action == "resetcounters":
         verbose("Resetting cast/genre error counters")
         database.reset_error_counters(db)
+
+    elif args.action == "setcollectionregex":
+        if not args.collection:
+            print("ERROR: --collection is required for setcollectionregex")
+            sys.exit(2)
+        if not args.movieRegex and not args.tvshowRegex:
+            print("ERROR: at least one of --movie-regex or --tvshow-regex is required")
+            sys.exit(2)
+        if args.movieRegex:
+            try:
+                p = re.compile(args.movieRegex)
+            except re.error as e:
+                print(f"ERROR: --movie-regex is invalid: {e}")
+                sys.exit(2)
+            missing = [g for g in ('name', 'year') if g not in p.groupindex]
+            if missing:
+                print(f"ERROR: --movie-regex missing required named groups: {', '.join(missing)}")
+                sys.exit(2)
+        if args.tvshowRegex:
+            try:
+                p = re.compile(args.tvshowRegex)
+            except re.error as e:
+                print(f"ERROR: --tvshow-regex is invalid: {e}")
+                sys.exit(2)
+            missing = [g for g in ('name', 'year', 'season', 'episode') if g not in p.groupindex]
+            if missing:
+                print(f"ERROR: --tvshow-regex missing required named groups: {', '.join(missing)}")
+                sys.exit(2)
+        col_id, created = database.create_or_get_collection(db, args.collection)
+        if created:
+            verbose(f"Created collection '{args.collection}'")
+        database.set_collection_regex(db, args.collection, args.movieRegex, args.tvshowRegex)
+        verbose(f"Regex updated for collection '{args.collection}'")
 
     elif args.action == "clearscreenshots":
         verbose("Clearing all screenshots")
@@ -185,12 +218,14 @@ def main():
     maintenanceparser = subparsers.add_parser("maintenance", help="database and inference maintenance")
     maintenanceparser.set_defaults(func=maintenance)
     maintenanceparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
-    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots/backfillgenres/refreshmovie/resetcounters")
+    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots/backfillgenres/refreshmovie/resetcounters/setcollectionregex")
     maintenanceparser.add_argument("--path", "-p", action="store", dest="libPath", default=None, help="path to video files (required for getscreenshots)")
     maintenanceparser.add_argument("--collection", "-c", action="store", dest="collection", default=None, help="collection filter (optional for getscreenshots)")
     maintenanceparser.add_argument("--key", "-k", action="store", dest="tmdbApiKey", default=None, help="TMDB API key (required for refreshmovie/backfillgenres)")
     maintenanceparser.add_argument("--tmdb-id", action="store", dest="tmdbId", type=int, default=None, help="TMDB movie ID (optional for refreshmovie; omit to refresh top/random/oldest batch)")
     maintenanceparser.add_argument("--limit", "-l", action="store", dest="limit", type=int, default=None, help="max movies to process per run (for backfillgenres)")
+    maintenanceparser.add_argument("--movie-regex", action="store", dest="movieRegex", default=None, help="movie filename regex with named groups (?P<name>, ?P<year>); for setcollectionregex")
+    maintenanceparser.add_argument("--tvshow-regex", action="store", dest="tvshowRegex", default=None, help="tvshow filename regex with named groups (?P<name>, ?P<year>, ?P<season>, ?P<episode>); for setcollectionregex")
 
     tagsparser = subparsers.add_parser("tags", help="file tagging")
     tagsparser.set_defaults(func=tagging)

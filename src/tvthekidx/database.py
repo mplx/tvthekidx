@@ -12,6 +12,9 @@ from sqlite3 import Error
 import os
 import re
 
+DEFAULT_MOVIE_REGEX = r'(?P<name>.*) \((?P<year>[0-9]{4})\)(?:.*?\{(?P<tvstation>[^}]+)\})?.*\..+'
+DEFAULT_TVSHOW_REGEX = r'(?P<name>.*) \((?P<year>[0-9]{4})\) [Ss](?P<season>[0-9]+)[Ee](?P<episode>[0-9]+)(?:.*?\{(?P<tvstation>[^}]+)\})?.*\..+'
+
 
 def create_connection(db_file):
     conn = None
@@ -296,12 +299,36 @@ def upgrade_db(db_file):
         execute_sql(conn, "ALTER TABLE movies ADD COLUMN refresh_timestamp INTEGER DEFAULT NULL", None, True)
         execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
 
-    " up-to-date "
+    " collections table, collection_id FK, drop collection text column "
     if DBVERSION == 9:
+        DBVERSION += 1
+        verbose("Upgrading database to version " + str(DBVERSION), 2)
+
+        execute_sql(conn, 'CREATE TABLE "collections" ("id" INTEGER NOT NULL, "guid" TEXT NOT NULL UNIQUE, "name" TEXT NOT NULL UNIQUE, "movie_filename_regex" TEXT DEFAULT NULL, "tvshow_filename_regex" TEXT DEFAULT NULL, PRIMARY KEY("id" AUTOINCREMENT))', None, True)
+
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT collection FROM files WHERE collection IS NOT NULL")
+        for row in cursor.fetchall():
+            name = row[0]
+            guid = generate_oid("collection", name)
+            cursor.execute("INSERT INTO collections (guid, name) VALUES (?, ?)", (guid, name))
+        conn.commit()
+        cursor.close()
+
+        execute_sql(conn, "ALTER TABLE files ADD COLUMN collection_id INTEGER REFERENCES collections(id)", None, True)
+        execute_sql(conn, "UPDATE files SET collection_id = (SELECT id FROM collections WHERE name = files.collection)", None, True)
+        execute_sql(conn, 'DROP INDEX IF EXISTS "unique_fn"', None, True)
+        execute_sql(conn, 'CREATE UNIQUE INDEX "unique_fn" ON "files" ("collection_id", "filename", "relpath")', None, True)
+        execute_sql(conn, "ALTER TABLE files DROP COLUMN collection", None, True)
+
+        execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
+
+    " up-to-date "
+    if DBVERSION == 10:
         verbose("Database up-to-date", 1)
 
 
-def getMovies(db, where=None, orderby=None, limit=None):
+def getMovies(db, where=None, orderby=None, limit=None, params=None):
     cur = db.cursor()
     selectSQL = "SELECT DISTINCT m.* FROM movies m JOIN files f ON m.id=f.movie_id"
     if where:
@@ -310,7 +337,7 @@ def getMovies(db, where=None, orderby=None, limit=None):
         selectSQL = f"{selectSQL} ORDER BY {orderby}"
     if limit:
         selectSQL = f"{selectSQL} LIMIT {limit}"
-    cur.execute(selectSQL)
+    cur.execute(selectSQL, list(params) if params else [])
     return cur.fetchall()
 
 
@@ -337,7 +364,7 @@ def getCrew(db, mid, where=None, limit=None):
 
 def getCollections(db, mid):
     cur = db.cursor()
-    selectSQL = "SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, tvstation FROM files WHERE movie_id = ? ORDER BY collection ASC"
+    selectSQL = "SELECT DISTINCT f.id, c.name AS collection, f.filename, f.size, f.added, f.ctime, f.codec, f.width, f.height, f.duration, f.tvstation FROM files f LEFT JOIN collections c ON f.collection_id = c.id WHERE f.movie_id = ? ORDER BY c.name ASC"
     cur.execute(selectSQL, (mid, ))
     return cur.fetchall()
 
@@ -348,7 +375,7 @@ def getCollections_bulk(db, movie_ids):
     ph = ",".join("?" * len(movie_ids))
     cur = db.cursor()
     cur.execute(
-        f"SELECT DISTINCT id, collection, filename, size, added, ctime, codec, width, height, duration, tvstation, movie_id FROM files WHERE movie_id IN ({ph}) ORDER BY collection ASC",
+        f"SELECT DISTINCT f.id, c.name AS collection, f.filename, f.size, f.added, f.ctime, f.codec, f.width, f.height, f.duration, f.tvstation, f.movie_id FROM files f LEFT JOIN collections c ON f.collection_id = c.id WHERE f.movie_id IN ({ph}) ORDER BY c.name ASC",
         list(movie_ids))
     result = {}
     for row in cur.fetchall():
@@ -390,9 +417,9 @@ def getCrew_bulk(db, movie_ids, where=None, limit=None):
     return result
 
 
-def get_file_id(db, collection, filename, relpath):
+def get_file_id(db, collection_id, filename, relpath):
     cur = db.cursor()
-    cur.execute("SELECT id FROM files WHERE collection = ? AND filename = ? AND relpath = ?", (collection, filename, relpath))
+    cur.execute("SELECT id FROM files WHERE collection_id = ? AND filename = ? AND relpath = ?", (collection_id, filename, relpath))
     row = cur.fetchone()
     return row["id"] if row else None
 
@@ -531,7 +558,7 @@ def get_actor_attachments_bulk(db, actor_ids, att_type=None):
     return result
 
 
-def getActors(db, where=None, orderby="popularity DESC, name ASC"):
+def getActors(db, where=None, orderby="popularity DESC, name ASC", params=None):
     cur = db.cursor()
     selectSQL = "SELECT DISTINCT a.* FROM actors a"
     if where:
@@ -540,7 +567,8 @@ def getActors(db, where=None, orderby="popularity DESC, name ASC"):
         selectSQL = f"{selectSQL} JOIN crew_movies cm ON cm.a_id=a.id JOIN movies m ON cm.m_id=m.id JOIN files f ON f.movie_id = m.id WHERE {where}"
     if orderby:
         selectSQL = f"{selectSQL} ORDER BY {orderby}"
-    cur.execute(selectSQL)
+    all_params = (list(params) * 2) if params else []
+    cur.execute(selectSQL, all_params)
     return cur.fetchall()
 
 
@@ -675,32 +703,68 @@ def refresh_movies_bulk(db, movie_api):
 
 
 def scanMovies(db, search):
-    selectSQL = "SELECT id, filename FROM files WHERE (movie_id IS NULL or movie_id=0) ORDER BY filename ASC"
+    selectSQL = "SELECT f.id, f.filename, c.movie_filename_regex FROM files f LEFT JOIN collections c ON f.collection_id = c.id WHERE (f.movie_id IS NULL or f.movie_id=0) ORDER BY f.filename ASC"
     cur = execute_sql(db, selectSQL)
     for row in cur.fetchall():
-        m = re.search(r'(.*) \(([0-9][0-9][0-9][0-9])\).+', row['filename'])
-        basename = m.group(1)
-        year = int(m.group(2))
+        pattern = row['movie_filename_regex'] or DEFAULT_MOVIE_REGEX
+        m = re.search(pattern, row['filename'])
+        if not m:
+            continue
+        basename = m.group('name')
+        year = int(m.group('year'))
         m_id = lookupMovie(db, search, basename, year)
         assignMovieToFile(db, row['id'], m_id)
+        try:
+            station = m.group('tvstation')
+            if station:
+                db.cursor().execute(
+                    "UPDATE files SET tvstation = ? WHERE id = ? AND tvstation IS NULL",
+                    (station.lower(), row['id']))
+        except IndexError:
+            pass
         db.commit()
     return None
 
 
-def addFileToDb(db, collection, filename, relpath):
-    oid = generate_oid("file", f"{collection}:{relpath}:{filename}")
-    insertSQL = "INSERT INTO files (collection, filename, relpath, movie_id, lastseen, oid) VALUES (?, ?, ?, NULL, cast(strftime('%s','now') as int), ?)"
-    selectSQL = "SELECT * FROM files WHERE collection = ? AND filename = ? AND relpath = ?"
-    cur = execute_sql(db, selectSQL, (collection, filename, relpath))
+def addFileToDb(db, collection_id, filename, relpath):
+    oid = generate_oid("file", f"{collection_id}:{relpath}:{filename}")
+    insertSQL = "INSERT INTO files (collection_id, filename, relpath, movie_id, lastseen, oid) VALUES (?, ?, ?, NULL, cast(strftime('%s','now') as int), ?)"
+    selectSQL = "SELECT * FROM files WHERE collection_id = ? AND filename = ? AND relpath = ?"
+    cur = execute_sql(db, selectSQL, (collection_id, filename, relpath))
     entry = cur.fetchone()
     if entry is None:
-        execute_sql(db, insertSQL, (collection, filename, relpath, oid))
+        execute_sql(db, insertSQL, (collection_id, filename, relpath, oid))
         return True
     return entry
 
 
-def updateLastSeen(db, collection, filename, relpath):
-    execute_sql(db, "UPDATE files SET lastseen = cast(strftime('%s','now') as int) WHERE collection = ? AND filename = ? AND relpath = ?", (collection, filename, relpath))
+def updateLastSeen(db, collection_id, filename, relpath):
+    execute_sql(db, "UPDATE files SET lastseen = cast(strftime('%s','now') as int) WHERE collection_id = ? AND filename = ? AND relpath = ?", (collection_id, filename, relpath))
+
+
+def get_collection(db, name):
+    cur = db.cursor()
+    cur.execute("SELECT * FROM collections WHERE name = ?", (name,))
+    return cur.fetchone()
+
+
+def create_or_get_collection(db, name):
+    cur = db.cursor()
+    cur.execute("SELECT id FROM collections WHERE name = ?", (name,))
+    row = cur.fetchone()
+    if row is not None:
+        return row['id'], False
+    guid = generate_oid("collection", name)
+    cur.execute("INSERT INTO collections (guid, name) VALUES (?, ?)", (guid, name))
+    db.commit()
+    return cur.lastrowid, True
+
+
+def set_collection_regex(db, name, movie_regex=None, tvshow_regex=None):
+    if movie_regex is not None:
+        execute_sql(db, "UPDATE collections SET movie_filename_regex = ? WHERE name = ?", (movie_regex, name), True)
+    if tvshow_regex is not None:
+        execute_sql(db, "UPDATE collections SET tvshow_filename_regex = ? WHERE name = ?", (tvshow_regex, name), True)
 
 
 def addMovieToDb(db, movie):

@@ -294,14 +294,12 @@ def writeFooter(f):
 
 
 def writeMoviesImageTitle(db, f, collection, gfxmode):
-    whereSql = ""
+    col_where = ""
+    col_params = []
     if collection:
-        if whereSql != "":
-            whereSql = whereSql + " AND "
-        whereSql = whereSql + "("
-        for col in collection:
-            whereSql = whereSql + f"(collection='{col}') OR "
-        whereSql = whereSql[0:-4] + ")"
+        ph = ",".join("?" * len(collection))
+        col_where = f"f.collection_id IN (SELECT id FROM collections WHERE name IN ({ph}))"
+        col_params = list(collection)
 
     base = os.path.splitext(os.path.basename(f.name))[0]
     imgdir = f"{base}"
@@ -310,7 +308,7 @@ def writeMoviesImageTitle(db, f, collection, gfxmode):
     f.write('<h3 id="new">Neu</h3>')
 
     orderBy = "strftime('%Y%m%d', added, 'unixepoch') DESC, score DESC, year DESC, m.title COLLATE NOCASE ASC"
-    movies = database.getMovies(db, whereSql, orderBy, "0,45")
+    movies = database.getMovies(db, col_where or None, orderBy, "0,45", col_params or None)
     poster_map = database.get_movie_attachments_bulk(db, [m['id'] for m in movies], 'poster')
     f.write('<section id="new1">\n')
     for m in movies:
@@ -332,12 +330,10 @@ def writeMoviesImageTitle(db, f, collection, gfxmode):
 
     f.write('<h3 id="top">Top</h3>')
 
-    if whereSql != "":
-        whereSql = whereSql + " AND "
-    whereSql = whereSql + "m.id IN (SELECT ref_id FROM attachments WHERE type = 'poster') AND (score < 100)"
+    top_where = ("(" + col_where + ") AND " if col_where else "") + "m.id IN (SELECT ref_id FROM attachments WHERE type = 'poster') AND (score < 100)"
     orderBy = "score DESC, year DESC, m.title COLLATE NOCASE ASC"
 
-    movies = database.getMovies(db, whereSql, orderBy, "0,60")
+    movies = database.getMovies(db, top_where, orderBy, "0,60", col_params or None)
     poster_map = database.get_movie_attachments_bulk(db, [m['id'] for m in movies], 'poster')
     f.write('<section id="top1">\n')
     for m in movies:
@@ -373,20 +369,19 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
 
     anchor_map = {}
 
-    whereSql = ""
-    fileDetail = 0
+    col_where = ""
+    col_params = []
+    fileDetail = len(collection) if collection else 0
     if collection:
-        whereSql = whereSql + "("
-        for col in collection:
-            whereSql = whereSql + f"(collection='{col}') OR "
-            fileDetail += 1
-        whereSql = whereSql[0:-4] + ")"
+        ph = ",".join("?" * len(collection))
+        col_where = f"f.collection_id IN (SELECT id FROM collections WHERE name IN ({ph}))"
+        col_params = list(collection)
 
     base = os.path.splitext(os.path.basename(f.name))[0]
     imgdir = f"{base}"
     imgpath = os.path.join(os.path.dirname(f.name), imgdir)
 
-    movies = database.getMovies(db, whereSql, "m.title_normalized COLLATE NOCASE ASC, year ASC", None)
+    movies = database.getMovies(db, col_where or None, "m.title_normalized COLLATE NOCASE ASC, year ASC", None, col_params or None)
     movie_ids = [m['id'] for m in movies]
     poster_map = database.get_movie_attachments_bulk(db, movie_ids, 'poster')
     collections_map = database.getCollections_bulk(db, movie_ids)
@@ -553,18 +548,18 @@ def actorListedChoice(mcnt=0, popularity=0):
 
 
 def writeActorsDetail(db, f, collection, gfxmode):
-    whereSql = ""
+    col_where = ""
+    col_params = []
     if collection:
-        whereSql = whereSql + "("
-        for col in collection:
-            whereSql = whereSql + f"(collection='{col}') OR "
-        whereSql = whereSql[0:-4] + ")"
+        ph = ",".join("?" * len(collection))
+        col_where = f"f.collection_id IN (SELECT id FROM collections WHERE name IN ({ph}))"
+        col_params = list(collection)
 
     base = os.path.splitext(os.path.basename(f.name))[0]
     imgdir = f"{base}"
     imgpath = os.path.join(os.path.dirname(f.name), imgdir)
 
-    actors = database.getActors(db, whereSql)
+    actors = database.getActors(db, col_where or None, params=col_params or None)
     actor_ids = [a['id'] for a in actors]
     profile_map = database.get_actor_attachments_bulk(db, actor_ids, 'profile')
     movies_by_actor = database.getMoviesByActor_bulk(db, actor_ids)
@@ -613,12 +608,12 @@ def writeActorsDetail(db, f, collection, gfxmode):
 
 
 def writeTagsDetail(db, f, collection):
-    whereSql = ""
+    col_where = ""
+    col_params = []
     if collection:
-        whereSql = whereSql + "("
-        for col in collection:
-            whereSql = whereSql + f"(collection='{col}') OR "
-        whereSql = whereSql[0:-4] + ")"
+        ph = ",".join("?" * len(collection))
+        col_where = f"f.collection_id IN (SELECT id FROM collections WHERE name IN ({ph}))"
+        col_params = list(collection)
 
     tags_list = tags.tag_list(db)
 
@@ -632,7 +627,7 @@ def writeTagsDetail(db, f, collection):
         tcnt = tcnt + 1
         tagname = t['tag']
         tagid = t['id']
-        movies = tags.getMoviesByTagid(db, tagid, whereSql)
+        movies = tags.getMoviesByTagid(db, tagid, col_where or None, col_params or None)
         if movies:
             f.write(f"""
                 <div class="row row-striped p-3" data-search='["{tagname}"]'>

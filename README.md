@@ -82,6 +82,8 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 - `-c`, `--collection` collection name
 - `-r`, `--recursive` scan subdirectories recursively
 
+> **Filename convention:** By default, video files must be named `Title (YYYY).ext` (e.g. `Metropolis (1927).mkv`). An optional `{StationKey}` tag anywhere after the year is also captured (e.g. `News (2024) {ARD}.mkv`). Custom per-collection regexes can be stored with the `setcollectionregex` maintenance action.
+
 ## `export` arguments
 
 - `-d`, `--database` SQLite database file
@@ -142,13 +144,16 @@ tvthekidx export -d tvthek.db -c "TVthek" -f streamer \
   - `getscreenshots` — capture/backfill screenshots for files (requires `-p`)
   - `clearscreenshots` — delete all stored screenshots
   - `backfillgenres` — fetch genres from TMDB for all movies that don't have them yet (requires `-k`, optional `-l`)
-  - `refreshmovie` — re-fetch metadata for one movie (with `--tmdb-id`) or run a bulk refresh of top-20 by score + 20 random + 20 oldest-refreshed movies (without `--tmdb-id`); stores a refresh timestamp per movie; requires `-k`
+  - `refreshmovie` — re-fetch metadata for one movie (with `--tmdb-id`) or run a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed movies (without `--tmdb-id`); stores a refresh timestamp per movie; requires `-k`
   - `resetcounters` — reset cast and genre error counters to zero
+  - `setcollectionregex` — store a custom filename regex for a collection (requires `-c`; at least one of `--movie-regex` or `--tvshow-regex`); regex must use named groups `(?P<name>...)` and `(?P<year>...)` (movie), plus `(?P<season>...)` and `(?P<episode>...)` (tvshow); `(?P<tvstation>...)` is optional in both
 - `-p`, `--path` path to video files (required for `getscreenshots`)
-- `-c`, `--collection` collection filter (optional for `getscreenshots`)
+- `-c`, `--collection` collection name (required for `setcollectionregex`; optional for `getscreenshots`)
 - `-k`, `--key` TMDB API key (required for `backfillgenres` and `refreshmovie`)
 - `--tmdb-id` TMDB movie ID (optional for `refreshmovie`; omit for bulk refresh)
 - `-l`, `--limit` maximum number of movies to process per run (for `backfillgenres`, to stay within TMDB API rate limits)
+- `--movie-regex` custom movie filename regex with named groups (for `setcollectionregex`)
+- `--tvshow-regex` custom TV-show filename regex with named groups (for `setcollectionregex`)
 
 ## `tags` arguments
 

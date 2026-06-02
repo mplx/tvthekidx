@@ -1,6 +1,6 @@
 import pytest
 
-from tvthekidx.database import initialize_db, addFileToDb
+from tvthekidx.database import initialize_db, addFileToDb, create_or_get_collection
 from tvthekidx.tags import tag_add, tag_list, tag_delete, tag_delete_all, tag_scanfiles
 
 
@@ -82,8 +82,9 @@ class TestTagDeleteAll:
 
 class TestTagScanfiles:
     def test_matching_file_gets_tagged(self, db):
-        addFileToDb(db, "col", "Die Hard (1988).mkv", "/movies")
-        addFileToDb(db, "col", "Shrek (2001).mkv", "/movies")
+        col_id, _ = create_or_get_collection(db, "col")
+        addFileToDb(db, col_id, "Die Hard (1988).mkv", "/movies")
+        addFileToDb(db, col_id, "Shrek (2001).mkv", "/movies")
         db.commit()
         tid, _ = tag_add(db, "action", r"Die Hard")
         tag_scanfiles(db, "action")
@@ -93,7 +94,8 @@ class TestTagScanfiles:
         assert count == 1
 
     def test_scan_by_integer_id(self, db):
-        addFileToDb(db, "col", "Alien (1979).mkv", "/movies")
+        col_id, _ = create_or_get_collection(db, "col")
+        addFileToDb(db, col_id, "Alien (1979).mkv", "/movies")
         db.commit()
         tid, _ = tag_add(db, "scifi", r"Alien")
         tag_scanfiles(db, tid)
@@ -103,7 +105,8 @@ class TestTagScanfiles:
         assert count == 1
 
     def test_non_matching_file_not_tagged(self, db):
-        addFileToDb(db, "col", "Bambi (1942).mkv", "/movies")
+        col_id, _ = create_or_get_collection(db, "col")
+        addFileToDb(db, col_id, "Bambi (1942).mkv", "/movies")
         db.commit()
         tid, _ = tag_add(db, "scifi", r"Alien")
         tag_scanfiles(db, "scifi")
@@ -113,9 +116,10 @@ class TestTagScanfiles:
         assert count == 0
 
     def test_multiple_regex_patterns(self, db):
-        addFileToDb(db, "col", "Tagesschau (2023) {ard}.mkv", "/news")
-        addFileToDb(db, "col", "ZDF Heute (2023) {zdf}.mkv", "/news")
-        addFileToDb(db, "col", "Shrek (2001).mkv", "/movies")
+        col_id, _ = create_or_get_collection(db, "col")
+        addFileToDb(db, col_id, "Tagesschau (2023) {ard}.mkv", "/news")
+        addFileToDb(db, col_id, "ZDF Heute (2023) {zdf}.mkv", "/news")
+        addFileToDb(db, col_id, "Shrek (2001).mkv", "/movies")
         db.commit()
         tid, _ = tag_add(db, "news", r"\{ard\}")
         tag_add(db, "news", r"\{zdf\}")

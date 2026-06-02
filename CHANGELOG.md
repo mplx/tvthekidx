@@ -5,14 +5,18 @@
 ### Added
 - Genre support — genres fetched from TMDB and stored in `genres` / `movies_genres` tables; displayed as badges in HTML export
 - `backfillgenres` maintenance action — fetches genres for existing movies that have none (requires `--key`, optional `--limit`)
-- `refreshmovie` maintenance action — with `--tmdb-id` re-fetches one movie; without it runs a bulk refresh of top-20 by score + 20 random + 20 oldest-refreshed; stores a `refresh_timestamp` per movie
+- `refreshmovie` maintenance action — with `--tmdb-id` re-fetches one movie; without it runs a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed; stores a `refresh_timestamp` per movie
 - `resetcounters` maintenance action — resets cast and genre error counters to zero for all movies
 - Error counters (`cast_error_count`, `genre_error_count`) on movies — movies that return no results from TMDB are skipped after 3 consecutive failures per category
 - **Streamer export plugin** (`--format streamer`) — multi-file, streaming-service-style export {coded by Anthropic's Sonnet 4.6}
 - GitHub Release automation — pushing a version tag creates a release with auto-generated notes, Linux binary, and source distribution
+- **Per-collection filename regex** — `collections` table stores optional `movie_filename_regex` and `tvshow_filename_regex` per collection; when NULL the built-in defaults are used. Default movie pattern: `(?P<name>.*) \((?P<year>[0-9]{4})\)(?:.*?\{(?P<tvstation>[^}]+)\})?.*\..+`. Default TV show pattern adds `[Ss](?P<season>...)[Ee](?P<episode>...)` and an optional `{tvstation}` tag. Named groups (`name`, `year`, `tvstation`, `season`, `episode`) replace the previous positional-index extraction.
+- `setcollectionregex` maintenance action — stores custom `--movie-regex` and/or `--tvshow-regex` for a collection (both must use required named groups; `tvstation` is optional); creates the collection if it does not exist yet
+- TV station auto-detection from filename — when the movie filename regex captures a `tvstation` named group (e.g. `{ARD}` suffix) that value is written to `files.tvstation` during `scanMovies` if not already set by the ML detector
+- File discovery via regex — `scanDir` now enumerates files by extension only and applies the collection's movie regex as the filter, replacing the year-anchored glob pre-filter; the regex is the single source of truth for both discovery and title/year extraction
 
 ### Changed
-- Database schema v9
+- Database schema v10 — `collections` table introduced; `files.collection` TEXT column migrated to `files.collection_id` INTEGER FK; unique index rebuilt on `(collection_id, filename, relpath)`
 
 ---
 
