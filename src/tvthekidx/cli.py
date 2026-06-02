@@ -25,6 +25,7 @@ def indexer(args, remaining=None):
         print(f"ERROR: database '{args.dbfile}' not found")
         sys.exit(2)
 
+    verbose(f"Indexing path '{args.libPath}' for collection '{args.collection}'")
     db = database.initialize_db(args.dbfile)
     movie, search = online.initialize_tmdb(args.tmdbApiKey)
 
@@ -41,6 +42,8 @@ def exporter(args, remaining):
         print(f"ERROR: database '{args.dbfile}' not found")
         sys.exit(2)
 
+    col_display = ', '.join(collection) if collection else 'all'
+    verbose(f"Exporting collection '{col_display}' using format '{args.format}'")
     db = database.create_connection(args.dbfile)
     plugin = export.load_exporter(args.format)
     plugin_args = plugin.parse_args(remaining)
@@ -52,6 +55,7 @@ def maintenance(args, remaining=None):
         if os.path.isfile(args.dbfile):
             print(f"ERROR: database '{args.dbfile}' already exists")
             sys.exit(2)
+        verbose("Creating database")
         database.initialize_db(args.dbfile)
         return
 
@@ -61,11 +65,14 @@ def maintenance(args, remaining=None):
     db = database.create_connection(args.dbfile)
 
     if args.action == "compressdb":
+        verbose("Compressing database")
         database.cleanup_db(db)
     elif args.action == "upgradedb":
+        verbose("Upgrading database schema")
         database.upgrade_db(args.dbfile)
 
     elif args.action == "detecttvstations":
+        verbose("Detecting TV stations from screenshots")
         from . import tvstation
         model = tvstation.load_model()
         if model is None:
@@ -73,6 +80,7 @@ def maintenance(args, remaining=None):
             sys.exit(2)
         tvstation.backfill_tvstation(db, model)
     elif args.action == "cleartvstations":
+        verbose("Clearing TV station assignments")
         from . import tvstation
         tvstation.clear_tvstation(db)
 
@@ -80,6 +88,8 @@ def maintenance(args, remaining=None):
         if not args.tmdbApiKey:
             print("ERROR: --key is required for backfillgenres")
             sys.exit(2)
+        limit_str = f", limit {args.limit}" if args.limit else ""
+        verbose(f"Backfilling genres from TMDB{limit_str}")
         movie, _ = online.initialize_tmdb(args.tmdbApiKey)
         database.scanGenres(db, movie, limit=args.limit)
 
@@ -87,16 +97,20 @@ def maintenance(args, remaining=None):
         if not args.tmdbApiKey:
             print("ERROR: --key is required for refreshmovie")
             sys.exit(2)
-        if not args.tmdbId:
-            print("ERROR: --tmdb-id is required for refreshmovie")
-            sys.exit(2)
         movie, _ = online.initialize_tmdb(args.tmdbApiKey)
-        database.refresh_movie(db, movie, args.tmdbId)
+        if args.tmdbId:
+            verbose(f"Refreshing movie TMDB ID {args.tmdbId}")
+            database.refresh_movie(db, movie, args.tmdbId)
+        else:
+            verbose("Bulk refresh: top-20 by score + 20 random + 20 oldest-refreshed")
+            database.refresh_movies_bulk(db, movie)
 
     elif args.action == "resetcounters":
+        verbose("Resetting cast/genre error counters")
         database.reset_error_counters(db)
 
     elif args.action == "clearscreenshots":
+        verbose("Clearing all screenshots")
         database.clear_screenshots(db)
     elif args.action == "getscreenshots":
         if not args.libPath:
@@ -105,6 +119,7 @@ def maintenance(args, remaining=None):
         if not args.collection:
             print("ERROR: --collection is required for getscreenshots")
             sys.exit(2)
+        verbose(f"Capturing screenshots for collection '{args.collection}' from '{args.libPath}'")
         files.backfill_screenshots(db, args.collection, args.libPath)
 
     else:
@@ -174,7 +189,7 @@ def main():
     maintenanceparser.add_argument("--path", "-p", action="store", dest="libPath", default=None, help="path to video files (required for getscreenshots)")
     maintenanceparser.add_argument("--collection", "-c", action="store", dest="collection", default=None, help="collection filter (optional for getscreenshots)")
     maintenanceparser.add_argument("--key", "-k", action="store", dest="tmdbApiKey", default=None, help="TMDB API key (required for refreshmovie/backfillgenres)")
-    maintenanceparser.add_argument("--tmdb-id", action="store", dest="tmdbId", type=int, default=None, help="TMDB movie ID (required for refreshmovie)")
+    maintenanceparser.add_argument("--tmdb-id", action="store", dest="tmdbId", type=int, default=None, help="TMDB movie ID (optional for refreshmovie; omit to refresh top/random/oldest batch)")
     maintenanceparser.add_argument("--limit", "-l", action="store", dest="limit", type=int, default=None, help="max movies to process per run (for backfillgenres)")
 
     tagsparser = subparsers.add_parser("tags", help="file tagging")
