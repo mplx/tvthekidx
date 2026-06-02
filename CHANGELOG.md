@@ -5,9 +5,10 @@
 ### Added
 - Genre support — genres fetched from TMDB and stored in `genres` / `movies_genres` tables; displayed as badges in HTML export
 - `backfillgenres` maintenance action — fetches genres for existing movies that have none (requires `--key`, optional `--limit`)
-- `refreshmovie` maintenance action — re-fetches description, rating, poster, genres, cast, and crew for a single movie (`--key`, `--tmdb-id`)
+- `refreshmovie` maintenance action — with `--tmdb-id` re-fetches one movie; without it runs a bulk refresh of top-20 by score + 20 random + 20 oldest-refreshed; stores a `refresh_timestamp` per movie
 - `resetcounters` maintenance action — resets cast and genre error counters to zero for all movies
 - Error counters (`cast_error_count`, `genre_error_count`) on movies — movies that return no results from TMDB are skipped after 3 consecutive failures per category
+- **Streamer export plugin** (`--format streamer`) — multi-file, streaming-service-style export {coded by Anthropic's Sonnet 4.6}
 - GitHub Release automation — pushing a version tag creates a release with auto-generated notes, Linux binary, and source distribution
 
 ### Changed

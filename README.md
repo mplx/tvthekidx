@@ -86,7 +86,7 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 
 - `-d`, `--database` SQLite database file
 - `-c`, `--collection` comma-separated list of collections to include
-- `-f`, `--format` export format plugin (`html`, `text`); default `html`
+- `-f`, `--format` export format plugin (`html`, `text`, `streamer`); default `html`
 
 ### HTML plugin arguments (passed after `export`)
 
@@ -96,6 +96,39 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 - `--skip-actors` omit the actors/crew section
 - `--skip-header` omit the top-rated and newest-additions header sections
 - `--url` hyperlink prefix for video file links (default `./`)
+
+### Streamer plugin arguments (passed after `export`)
+
+Generates a multi-file, streaming-service-style site (Netflix/Prime aesthetic) as a directory tree.
+
+- `--targetpath` output directory (required)
+- `--title` site title (default `TVThek Index`)
+- `--jellyfin` Jellyfin base URL, e.g. `http://10.1.2.3:8096` — adds a play button on each movie page
+
+**Output structure:**
+```
+<targetpath>/
+├── index.html              search + horizontal carousels (Neu, Top, per-genre, Personen, Tags)
+├── assets/
+│   ├── style.css
+│   ├── app.js
+│   └── search.js           search index (generated, not static)
+├── media/                  one .html + .webp poster per movie
+├── persons/
+│   └── <xx>/               sharded by first 2 chars of OID
+│       ├── <oid>.html
+│       └── <oid>.webp      portrait (only for cast/crew linked from movie pages)
+├── genres/                 one .html per genre
+└── tags/                   one .html per tag
+```
+
+Each movie page includes a "Ähnliche Filme" horizontal row of the 10 most similar movies, scored by genres (50 %), shared persons (20 %), tags (15 %), and score proximity (15 %).
+
+**Example:**
+```bash
+tvthekidx export -d tvthek.db -c "TVthek" -f streamer \
+  --targetpath /var/www/html --jellyfin http://10.1.2.3:8096
+```
 
 ## `maintenance` arguments
 
@@ -109,12 +142,12 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
   - `getscreenshots` — capture/backfill screenshots for files (requires `-p`)
   - `clearscreenshots` — delete all stored screenshots
   - `backfillgenres` — fetch genres from TMDB for all movies that don't have them yet (requires `-k`, optional `-l`)
-  - `refreshmovie` — re-fetch all metadata (description, rating, poster, genres, cast/crew) for one movie from TMDB (requires `-k` and `--tmdb-id`)
+  - `refreshmovie` — re-fetch metadata for one movie (with `--tmdb-id`) or run a bulk refresh of top-20 by score + 20 random + 20 oldest-refreshed movies (without `--tmdb-id`); stores a refresh timestamp per movie; requires `-k`
   - `resetcounters` — reset cast and genre error counters to zero
 - `-p`, `--path` path to video files (required for `getscreenshots`)
 - `-c`, `--collection` collection filter (optional for `getscreenshots`)
 - `-k`, `--key` TMDB API key (required for `backfillgenres` and `refreshmovie`)
-- `--tmdb-id` TMDB movie ID (required for `refreshmovie`)
+- `--tmdb-id` TMDB movie ID (optional for `refreshmovie`; omit for bulk refresh)
 - `-l`, `--limit` maximum number of movies to process per run (for `backfillgenres`, to stay within TMDB API rate limits)
 
 ## `tags` arguments
@@ -128,10 +161,10 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 ## Development
 
 ```bash
-pip install -e .                 # install with runtime dependencies
+pip install -e .                     # install with runtime dependencies
 pip install -r requirements-dev.txt  # dev tools (pytest, flake8, pylint, build)
-pytest                           # run unit tests
+pytest                               # run unit tests
 flake8 src/
 pylint src/
-python -m build                  # build sdist + wheel
+python -m build                      # build sdist + wheel
 ```
