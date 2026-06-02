@@ -293,6 +293,7 @@ def upgrade_db(db_file):
         execute_sql(conn, 'CREATE TABLE "movies_genres" ("movie_id" INTEGER NOT NULL, "genre_id" INTEGER NOT NULL, PRIMARY KEY("movie_id","genre_id"), FOREIGN KEY("movie_id") REFERENCES "movies"("id"), FOREIGN KEY("genre_id") REFERENCES "genres"("id"))', None, True)
         execute_sql(conn, "ALTER TABLE movies ADD COLUMN cast_error_count INTEGER DEFAULT 0", None, True)
         execute_sql(conn, "ALTER TABLE movies ADD COLUMN genre_error_count INTEGER DEFAULT 0", None, True)
+        execute_sql(conn, "ALTER TABLE movies ADD COLUMN refresh_timestamp INTEGER DEFAULT NULL", None, True)
         execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
 
     " up-to-date "
@@ -642,9 +643,35 @@ def refresh_movie(db, movie_api, tmdbid):
             add_actor_attachment(db, aid, 'profile', person['profile'])
         addCrewToMovieDb(db, mid, aid, person['job'])
 
+    execute_sql(db, "UPDATE movies SET refresh_timestamp = cast(strftime('%s','now') as int) WHERE id = ?", (mid,))
     db.commit()
     verbose(f"Movie {tmdbid} refreshed", 1)
     return True
+
+
+def refresh_movies_bulk(db, movie_api):
+    cur = db.cursor()
+    month_ago = "refresh_timestamp IS NULL OR refresh_timestamp < cast(strftime('%s','now') as int) - 2592000"
+
+    cur.execute(f"SELECT tmdb_id FROM movies WHERE tmdb_id IS NOT NULL AND ({month_ago}) ORDER BY score DESC LIMIT 10")
+    top = [r['tmdb_id'] for r in cur.fetchall()]
+
+    cur.execute(f"SELECT tmdb_id FROM movies WHERE tmdb_id IS NOT NULL AND ({month_ago}) ORDER BY RANDOM() LIMIT 10")
+    rnd = [r['tmdb_id'] for r in cur.fetchall()]
+
+    cur.execute(f"SELECT tmdb_id FROM movies WHERE tmdb_id IS NOT NULL AND ({month_ago}) ORDER BY refresh_timestamp ASC LIMIT 10")
+    oldest = [r['tmdb_id'] for r in cur.fetchall()]
+
+    seen = set()
+    candidates = []
+    for tmdbid in top + rnd + oldest:
+        if tmdbid not in seen:
+            seen.add(tmdbid)
+            candidates.append(tmdbid)
+
+    verbose(f"Refreshing {len(candidates)} movies...", 1)
+    for tmdbid in candidates:
+        refresh_movie(db, movie_api, tmdbid)
 
 
 def scanMovies(db, search):
@@ -760,7 +787,7 @@ def getGenres_bulk(db, movie_ids):
     ph = ",".join("?" * len(movie_ids))
     cur = db.cursor()
     cur.execute(
-        f"SELECT g.id, g.name, g.tmdb_id, mg.movie_id FROM movies_genres mg JOIN genres g ON mg.genre_id = g.id WHERE mg.movie_id IN ({ph}) ORDER BY g.name ASC",
+        f"SELECT g.id, g.oid, g.name, g.tmdb_id, mg.movie_id FROM movies_genres mg JOIN genres g ON mg.genre_id = g.id WHERE mg.movie_id IN ({ph}) ORDER BY g.name ASC",
         list(movie_ids))
     result = {}
     for row in cur.fetchall():
