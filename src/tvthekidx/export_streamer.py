@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 import os
+import re
 import sys
 from urllib.parse import quote as url_quote
 
@@ -189,6 +190,7 @@ hr { border-color: #252525; margin: 1.5rem 0; }
     transition: color var(--fp-t);
 }
 .person-card:hover .card-label { color: #fff; }
+.card-sublabel { font-size: .66rem; color: var(--fp-muted); opacity: .75; margin-top: .1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .person-placeholder {
     width: 92px; height: 92px;
     border-radius: 50%;
@@ -548,6 +550,73 @@ a.badge { text-decoration:none; }
 .section-title a { text-decoration:none; color:inherit; }
 .fp-section-h5 a { text-decoration:none; color:inherit; }
 .file-collection-name a { text-decoration:none; }
+
+/* ── TV season card ──────────────────────────────────────── */
+.fp-season-card {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    background: var(--fp-card);
+    border: 1px solid var(--fp-border);
+    border-radius: var(--fp-radius);
+    padding: .7rem 1rem;
+    min-width: 110px;
+    text-align: center;
+    text-decoration: none;
+    transition: background var(--fp-t), border-color var(--fp-t);
+}
+.fp-season-card:hover { background: var(--fp-card2); border-color: rgba(255,255,255,.18); }
+.fp-season-num   { font-size: 1.1rem; font-weight: 700; color: var(--fp-accent); }
+.fp-season-title { font-size: .78rem; color: var(--fp-text); margin-top: .15rem; }
+.fp-season-count { font-size: .72rem; color: var(--fp-muted); margin-top: .2rem; }
+
+/* ── Episode grid ───────────────────────────────────────── */
+.fp-episode-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-bottom: 2rem;
+}
+.fp-ep-cell {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--fp-radius);
+    padding: .4rem .6rem;
+    min-width: 90px;
+    max-width: 180px;
+    font-size: .76rem;
+    border: 1px solid transparent;
+}
+.fp-ep-present { background: rgba(25,135,84,.25); border-color: rgba(25,135,84,.45); }
+.fp-ep-absent  { background: rgba(255,193,7,.18);  border-color: rgba(255,193,7,.35); }
+.fp-ep-missing { background: rgba(220,53,69,.18);  border-color: rgba(220,53,69,.35); }
+.fp-ep-num   { font-weight: 700; margin-bottom: .15rem; }
+.fp-ep-title { color: var(--fp-muted); font-size: .72rem; }
+.fp-ep-meta  { color: var(--fp-muted); font-size: .7rem; }
+.fp-ep-status { font-size: .85rem; margin-top: .1rem; }
+/* Episode rows (season detail page) */
+.fp-ep-row { border-left: 3px solid transparent; }
+.fp-ep-row-present { border-left-color: rgba(25,135,84,.7); }
+.fp-ep-row-absent  { border-left-color: rgba(255,193,7,.7);  opacity: .75; }
+.fp-ep-row-missing { border-left-color: rgba(220,53,69,.7);  opacity: .6; }
+.fp-ep-row-extra   { border-left-color: rgba(255,140,0,.7); }
+.fp-ep-thumb { width:64px; height:36px; object-fit:cover; border-radius:4px; flex-shrink:0; }
+.fp-ep-thumb-ph { width:64px; height:36px; border-radius:4px; flex-shrink:0; background:var(--fp-card2); display:flex; align-items:center; justify-content:center; font-size:.6rem; color:var(--fp-muted); }
+/* Lightbox */
+#fp-lb { display:none; position:fixed; inset:0; z-index:9000; align-items:center; justify-content:center; }
+#fp-lb.fp-lb-open { display:flex; }
+#fp-lb-bg { position:absolute; inset:0; background:rgba(0,0,0,.88); cursor:pointer; }
+#fp-lb-img { position:relative; max-width:92vw; max-height:88vh; object-fit:contain; border-radius:6px; box-shadow:0 8px 40px rgba(0,0,0,.7); }
+#fp-lb-prev, #fp-lb-next { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,.5); color:#fff; border:none; border-radius:50%; width:2.8rem; height:2.8rem; font-size:1.8rem; line-height:2.8rem; text-align:center; cursor:pointer; z-index:9001; padding:0; transition:background .15s; }
+#fp-lb-prev { left:1rem; }
+#fp-lb-next { right:1rem; }
+#fp-lb-close { position:absolute; top:.7rem; right:.7rem; background:rgba(0,0,0,.5); color:#fff; border:none; border-radius:50%; width:2.2rem; height:2.2rem; font-size:1rem; line-height:2.2rem; text-align:center; cursor:pointer; z-index:9001; padding:0; transition:background .15s; }
+#fp-lb-prev:hover, #fp-lb-next:hover, #fp-lb-close:hover { background:rgba(100,100,100,.85); }
+/* Screenshot thumbnails in episode rows */
+.fp-sc-group { display:flex; flex-wrap:wrap; gap:.35rem; margin:.35rem 0 .1rem; }
+.fp-sc-thumb { height:5rem; width:auto; border-radius:4px; object-fit:cover; cursor:pointer; flex-shrink:0; opacity:.85; transition:opacity .12s; }
+.fp-sc-thumb:hover { opacity:1; }
+.fp-sc-hidden { display:none; }
 """
 
 _JS = """\
@@ -594,7 +663,7 @@ function copyToClipboard(text, el) {
                 : (it.portrait
                     ? '<img src="' + it.portrait + '" alt="" style="border-radius:50%">'
                     : '<div style="width:36px;height:54px;background:#333;border-radius:3px;flex-shrink:0"></div>');
-            var meta = it.type === 'movie' ? (it.year || '') : 'Person';
+            var meta = it.type === 'movie' ? (it.year || '') : (it.type === 'show' ? ('Serie' + (it.year ? ' · ' + it.year : '')) : 'Person');
             return '<a href="' + it.url + '" class="sr-card">'
                 + imgHtml
                 + '<div><div class="sr-name">' + it.display + '</div>'
@@ -662,6 +731,60 @@ function copyToClipboard(text, el) {
         cards.forEach(function(c) { list.appendChild(c); });
     };
 })();
+
+// Lightbox
+(function() {
+    var lb = null, lbImg, _srcs = [], _idx = 0;
+
+    function _ensure() {
+        if (lb) return;
+        lb = document.createElement('div');
+        lb.id = 'fp-lb';
+        lb.innerHTML = '<div id="fp-lb-bg"></div>'
+            + '<button id="fp-lb-prev" onclick="lbNav(-1)">&#8249;</button>'
+            + '<img id="fp-lb-img" alt="">'
+            + '<button id="fp-lb-next" onclick="lbNav(1)">&#8250;</button>'
+            + '<button id="fp-lb-close" onclick="closeLightbox()">&#215;</button>';
+        document.body.appendChild(lb);
+        document.getElementById('fp-lb-bg').addEventListener('click', closeLightbox);
+        lbImg = document.getElementById('fp-lb-img');
+    }
+
+    function _show() {
+        lbImg.src = _srcs[_idx];
+        var multi = _srcs.length > 1;
+        document.getElementById('fp-lb-prev').hidden = !multi;
+        document.getElementById('fp-lb-next').hidden = !multi;
+    }
+
+    window.openLightboxGroup = function(groupId, idx) {
+        _ensure();
+        var grp = document.getElementById(groupId);
+        if (!grp) return;
+        _srcs = Array.from(grp.querySelectorAll('img')).map(function(i) { return i.src; });
+        if (!_srcs.length) return;
+        _idx = Math.max(0, Math.min(idx, _srcs.length - 1));
+        lb.classList.add('fp-lb-open');
+        _show();
+    };
+
+    window.lbNav = function(dir) {
+        if (!_srcs.length) return;
+        _idx = (_idx + dir + _srcs.length) % _srcs.length;
+        _show();
+    };
+
+    window.closeLightbox = function() {
+        if (lb) lb.classList.remove('fp-lb-open');
+    };
+
+    document.addEventListener('keydown', function(e) {
+        if (!lb || !lb.classList.contains('fp-lb-open')) return;
+        if (e.key === 'Escape') closeLightbox();
+        else if (e.key === 'ArrowLeft') lbNav(-1);
+        else if (e.key === 'ArrowRight') lbNav(1);
+    });
+})();
 """
 
 
@@ -727,11 +850,11 @@ def _screenshot_to_data_uri(img_bytes, max_h=360, quality=82):
 _ENCODE_WORKERS = min(os.cpu_count() or 4, 8)
 
 
-def _enc_movie_images(args):
-    mid, img_bytes = args
+def _enc_poster_images(args):
+    ref_id, img_bytes = args
     full  = _to_data_uri(img_bytes, 154, 231, quality=85)
     thumb = _to_data_uri(img_bytes,  38,  57, quality=30)
-    return mid, full, thumb
+    return ref_id, full, thumb
 
 
 def _enc_person_images(args):
@@ -787,7 +910,7 @@ def _foot(f, assets_rel, search_js=False, timestamp=False):
 
 def _pshard(oid):
     """Return the 1-character shard prefix for an OID."""
-    return oid[:1]
+    return (oid or '_')[:1]
 
 
 def _yshard(year):
@@ -871,20 +994,25 @@ def _poster_card_html(href, img_src, label, width=154, height=231, is_placeholde
     return f'<div class="poster-card" style="width:{width}px"{da}><a href="{href}">{img}<div class="card-label">{_esc(label)}</div></a></div>'
 
 
-def _person_card_html(href, img_src, label, is_placeholder=False):
+_JOB_DE = {"Director": "Regie", "Writer": "Buch"}
+
+
+def _person_card_html(href, img_src, label, is_placeholder=False, sublabel=None):
     if is_placeholder:
         initial = label[0].upper() if label else '?'
         img = f'<div class="person-placeholder">{initial}</div>'
     else:
         img = f'<img src="{img_src}" loading="lazy" class="person-img" alt="{_esc(label)}">'
-    return f'<div class="person-card"><a href="{href}">{img}<div class="card-label">{_esc(label)}</div></a></div>'
+    sub = (f'<div class="card-sublabel">{_esc(sublabel)}</div>' if sublabel else '')
+    return f'<div class="person-card"><a href="{href}">{img}<div class="card-label">{_esc(label)}</div>{sub}</a></div>'
 
 
 # ---------- page writers ----------
 
 def _write_movie_page(out_path, movie, cast, crew, genres, collections,
                       poster_uri, jellyfin, similar_movies, poster_uri_map,
-                      portrait_uri_map=None, screenshot_uris=None):
+                      portrait_uri_map=None, screenshot_uris=None,
+                      similar_tvshows=None, show_poster_uri_map=None):
     oid        = movie['oid']
     title      = movie['title']
     title_orig = movie['title_orig']
@@ -935,14 +1063,16 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
 
         f.write('<div class="container-fluid px-4">\n')
 
-        # directors
+        # crew (Regie/Buch)
         if crew:
-            f.write('<h5 class="fp-section-h5">Regie</h5>\n<div class="poster-row">\n')
+            f.write('<h5 class="fp-section-h5">Regie/Buch</h5>\n<div class="poster-row">\n')
             for p in crew:
                 p_uri = (portrait_uri_map or {}).get(p['id'], '')
+                job = p['job'] or ''
                 f.write(_person_card_html(
                     f'../../persons/{_pshard(p["oid"])}/{p["oid"]}.html',
-                    p_uri, p['name'], is_placeholder=not p_uri) + '\n')
+                    p_uri, p['name'], is_placeholder=not p_uri,
+                    sublabel=_JOB_DE.get(job, job)) + '\n')
             f.write('</div>\n')
 
         # cast
@@ -955,16 +1085,14 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
                     p_uri, p['name'], is_placeholder=not p_uri) + '\n')
             f.write('</div>\n')
 
-        # screenshots — thumbnails linking to the dedicated screenshot page
+        # screenshots — thumbnails that open a lightbox popup
         if screenshot_uris:
-            sc_shard = _pshard(oid)
-            sc_page  = f'../../screenshots/{sc_shard}/{oid}.html'
-            f.write(f'<h5 class="fp-section-h5"><a href="{sc_page}">Screenshots</a></h5>\n')
-            f.write('<div class="fp-screenshot-row">\n')
-            for uri in screenshot_uris:
-                f.write(f'<a href="{sc_page}">'
-                        f'<img src="{uri}" class="fp-screenshot" loading="lazy" alt="Screenshot">'
-                        f'</a>\n')
+            gid = f'fp-sc-m-{oid}'
+            f.write('<h5 class="fp-section-h5">Screenshots</h5>\n')
+            f.write(f'<div class="fp-screenshot-row" id="{gid}">\n')
+            for i, uri in enumerate(screenshot_uris):
+                f.write(f'<img src="{uri}" class="fp-screenshot" loading="lazy" alt="Screenshot"'
+                        f' style="cursor:pointer" onclick="openLightboxGroup(\'{gid}\',{i})">\n')
             f.write('</div>\n')
 
         # file list
@@ -1024,12 +1152,25 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
                                           is_placeholder=not sm_uri) + '\n')
             f.write('</div>\n')
 
+        # similar TV shows
+        if similar_tvshows:
+            f.write('<h5 class="fp-section-h5">Ähnliche Serien</h5>\n<div class="poster-row">\n')
+            for s in similar_tvshows:
+                s_oid = s['oid']
+                s_uri = (show_poster_uri_map or {}).get(s['id'], '')
+                f.write(_poster_card_html(f'../../shows/{_pshard(s_oid)}/{s_oid}.html',
+                                          s_uri,
+                                          f"{s['title']} ({s['year']})" if s['year'] else s['title'],
+                                          is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
+
         f.write('</div>\n')  # container-fluid
         _foot(f, '../../')
 
 
 def _write_person_page(out_path, actor, portrait_uri, movies, poster_uri_map,
-                       collections_map=None, jellyfin=None):
+                       collections_map=None, jellyfin=None,
+                       tvshows=None, show_poster_uri_map=None):
     oid     = actor['oid']
     name    = actor['name']
     pop     = int(actor['popularity'] or 0)
@@ -1132,11 +1273,36 @@ def _write_person_page(out_path, actor, portrait_uri, movies, poster_uri_map,
                 f.write('</div>\n')  # file-info-block
             f.write('</div>\n')  # fp-filmlist
 
+        # TV shows section
+        if tvshows:
+            tvshows_sorted = sorted(tvshows, key=lambda s: (-(s['year'] or 0), (s['title'] or '').upper()))
+            f.write(
+                f'<h5 class="fp-section-h5" style="display:flex;align-items:center;flex-wrap:wrap;gap:.3rem">'
+                f'Serien <span class="badge bg-secondary fp-cnt">{len(tvshows_sorted)}</span>'
+                f'</h5>\n'
+            )
+            f.write('<div class="d-flex flex-wrap gap-3 mb-4">\n')
+            for s in tvshows_sorted:
+                s_oid  = s['oid'] or ''
+                s_uri  = (show_poster_uri_map or {}).get(s['id'], '')
+                score  = int(s['score'] or 0)
+                sc_col = _score_color(score)
+                f.write(f'<div style="display:flex;align-items:flex-start;gap:.5rem;min-width:180px">\n')
+                if s_uri:
+                    f.write(f'<a href="../../shows/{_pshard(s_oid)}/{s_oid}.html">'
+                            f'<img src="{s_uri}" class="fp-poster-sm" alt=""></a>\n')
+                f.write(f'<div><a href="../../shows/{_pshard(s_oid)}/{s_oid}.html">'
+                        f'<span class="score-chip score-chip-sm me-1" style="background:{sc_col}">{score}%</span>'
+                        f'{_esc(s["title"])} ({s["year"]})</a></div>\n')
+                f.write('</div>\n')
+            f.write('</div>\n')
+
         f.write('</div>\n')
         _foot(f, '../../')
 
 
-def _write_genre_page(out_path, genre_name, movies, poster_uri_map):
+def _write_genre_page(out_path, genre_name, movies, poster_uri_map,
+                      tvshows=None, show_poster_uri_map=None):
     with open(out_path, 'w', encoding='utf-8') as f:
         _head(f, genre_name, '../')
         _navbar(f, genre_name, '../index.html', [('← Index', '../index.html')])
@@ -1160,11 +1326,25 @@ def _write_genre_page(out_path, genre_name, movies, poster_uri_map):
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
+        if tvshows:
+            _spuri = show_poster_uri_map or {}
+            f.write(f'<h3 class="section-title mt-4">Serien <span class="badge bg-secondary fp-cnt">{len(tvshows)}</span></h3>\n')
+            f.write('<div class="poster-grid">\n')
+            for s in sorted(tvshows, key=lambda x: (x['title_normalized'] or x['title'] or '').upper()):
+                s_oid = s['oid']
+                s_uri = _spuri.get(s['id'], '')
+                f.write(_poster_card_html(f'../shows/{_pshard(s_oid)}/{s_oid}.html',
+                                          s_uri,
+                                          f"{s['title']} ({s['year']})",
+                                          width=120, height=180,
+                                          is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../')
 
 
-def _write_year_page(out_path, year, movies, poster_uri_map):
+def _write_year_page(out_path, year, movies, poster_uri_map,
+                     tvshows=None, show_poster_uri_map=None):
     title = str(year)
     with open(out_path, 'w', encoding='utf-8') as f:
         _head(f, title, '../../')
@@ -1190,11 +1370,25 @@ def _write_year_page(out_path, year, movies, poster_uri_map):
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
+        if tvshows:
+            _spuri = show_poster_uri_map or {}
+            f.write(f'<h3 class="section-title mt-4">Serien <span class="badge bg-secondary fp-cnt">{len(tvshows)}</span></h3>\n')
+            f.write('<div class="poster-grid">\n')
+            for s in sorted(tvshows, key=lambda x: (x['title_normalized'] or x['title'] or '').upper()):
+                s_oid = s['oid']
+                s_uri = _spuri.get(s['id'], '')
+                f.write(_poster_card_html(f'../../shows/{_pshard(s_oid)}/{s_oid}.html',
+                                          s_uri,
+                                          f"{s['title']} ({s['year']})",
+                                          width=120, height=180,
+                                          is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../../')
 
 
-def _write_tag_page(out_path, tag_name, movies, poster_uri_map, movie_by_id):
+def _write_tag_page(out_path, tag_name, movies, poster_uri_map, movie_by_id,
+                    tvshows=None, show_poster_uri_map=None):
     with open(out_path, 'w', encoding='utf-8') as f:
         _head(f, tag_name, '../')
         _navbar(f, tag_name, '../index.html', [('← Index', '../index.html')])
@@ -1221,6 +1415,19 @@ def _write_tag_page(out_path, tag_name, movies, poster_uri_map, movie_by_id):
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
+        if tvshows:
+            _spuri = show_poster_uri_map or {}
+            f.write(f'<h3 class="section-title mt-4">Serien <span class="badge bg-secondary fp-cnt">{len(tvshows)}</span></h3>\n')
+            f.write('<div class="poster-grid">\n')
+            for s in sorted(tvshows, key=lambda x: (x['title_normalized'] or x['title'] or '').upper()):
+                s_oid = s['oid']
+                s_uri = _spuri.get(s['id'], '')
+                f.write(_poster_card_html(f'../shows/{_pshard(s_oid)}/{s_oid}.html',
+                                          s_uri,
+                                          f"{s['title']} ({s['year']})",
+                                          width=120, height=180,
+                                          is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../')
 
@@ -1249,7 +1456,8 @@ def _write_screenshot_page(out_path, movie_title, movie_oid, file_screenshot_lis
         _foot(f, '../../')
 
 
-def _write_tvstation_page(out_path, station_key, movies, poster_uri_map):
+def _write_tvstation_page(out_path, station_key, movies, poster_uri_map,
+                          tvshows=None, show_poster_uri_map=None):
     display = tvstation_module.display_name(station_key)
     logo    = tvstation_module.get_logo(station_key)
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -1282,6 +1490,18 @@ def _write_tvstation_page(out_path, station_key, movies, poster_uri_map):
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
+        if tvshows:
+            f.write(f'<h2 class="fp-section-h2 mt-4">Serien <span class="badge bg-secondary ms-2 fp-cnt">{len(tvshows)}</span></h2>\n')
+            f.write('<div class="poster-grid">\n')
+            for s in tvshows:
+                s_oid = s['oid']
+                s_uri = (show_poster_uri_map or {}).get(s['id'], '')
+                f.write(_poster_card_html(f'../shows/{_pshard(s_oid)}/{s_oid}.html',
+                                          s_uri,
+                                          f"{s['title']} ({s['year']})" if s['year'] else s['title'],
+                                          width=120, height=180,
+                                          is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../')
 
@@ -1331,12 +1551,15 @@ def _write_index(out_path, targetpath, title,
                  popular_persons, newest_persons, random_persons,
                  all_genres, all_tags, all_years,
                  poster_uri_map, portrait_uri_map,
-                 tvstations=None):
+                 tvstations=None,
+                 newest_shows=None, top_shows=None, show_poster_uri_map=None):
     with open(out_path, 'w', encoding='utf-8') as f:
         _head(f, title, '', version_meta=True)
         nav_links = [('Zufall', '#fp-random'), ('Neu', '#fp-new'), ('Top', '#fp-top'),
-                     ('Genres', '#fp-genres'), ('Künstler', '#fp-persons'), ('Tags', '#fp-tags'),
-                     ('Jahre', '#fp-years')]
+                     ('Genres', '#fp-genres')]
+        if newest_shows or top_shows:
+            nav_links.append(('Serien', '#fp-shows'))
+        nav_links += [('Künstler', '#fp-persons'), ('Tags', '#fp-tags'), ('Jahre', '#fp-years')]
         if tvstations:
             nav_links.append(('TV-Sender', '#fp-tvstations'))
         _navbar(f, title, 'index.html', nav_links)
@@ -1399,6 +1622,28 @@ def _write_index(out_path, targetpath, title,
                                               f"{m['title']} ({m['year']})",
                                               is_placeholder=not m_uri) + '\n')
                 f.write('</div>\n')
+
+        # TV show carousels (before artists)
+        _spuri = show_poster_uri_map or {}
+        if newest_shows or top_shows:
+            f.write('<h2 class="section-title" id="fp-shows">Serien</h2>\n')
+        if newest_shows:
+            f.write('<h4 class="fp-genre-sub">Neue Serien</h4>\n<div class="poster-row">\n')
+            for s in newest_shows:
+                s_uri = _spuri.get(s['id'], '')
+                f.write(_poster_card_html(f'shows/{_pshard(s["oid"])}/{s["oid"]}.html',
+                                          s_uri, f"{s['title']} ({s['year']})",
+                                          is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
+        if top_shows:
+            f.write('<h4 class="fp-genre-sub">Top Serien</h4>\n<div class="poster-row">\n')
+            for s in top_shows:
+                s_uri = _spuri.get(s['id'], '')
+                sc    = int(s['score'] or 0)
+                f.write(_poster_card_html(f'shows/{_pshard(s["oid"])}/{s["oid"]}.html',
+                                          s_uri, f"{s['title']} ({s['year']}) {sc}%",
+                                          is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
 
         # Popular artists
         if popular_persons:
@@ -1477,6 +1722,328 @@ def _write_index(out_path, targetpath, title,
         _foot(f, '', search_js=True, timestamp=True)
 
 
+def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_map,
+                     cast, crew, genres, poster_uri, similar_shows, show_poster_uri_map,
+                     title, jellyfin, similar_movies=None, poster_uri_map=None):
+    oid      = show['oid']
+    s_title  = show['title']
+    year     = show['year']
+    desc     = (show['description'] or '')[:800]
+    score    = int(show['score'] or 0)
+    tmdb_id  = show['tmdb_id']
+
+    show_eps   = episodes_by_show.get(show['id'], [])
+    eps_by_season = {}
+    for ep in show_eps:
+        eps_by_season.setdefault(ep['season_number'], []).append(ep)
+
+    with open(out_path, 'w', encoding='utf-8') as f:
+        _head(f, f"{s_title} ({year})", '../../')
+        nav_links = [('← Index', '../../index.html')]
+        if tmdb_id:
+            nav_links.append(('TMDB ↗', f'https://www.themoviedb.org/tv/{tmdb_id}'))
+        _navbar(f, s_title, '../../index.html', nav_links)
+        f.write('<div class="fp-page-header"><div class="container-fluid px-4">\n')
+        f.write('<div class="fp-hero">\n')
+
+        f.write('<div class="fp-hero-poster">')
+        if poster_uri:
+            f.write(f'<img src="{poster_uri}" alt="{_esc(s_title)}" class="fp-hero-movie-poster">')
+        else:
+            f.write(f'<div class="poster-placeholder" style="width:154px;height:231px">{_esc(s_title[:30])}</div>')
+        f.write('</div>\n')
+
+        f.write('<div class="fp-hero-info">\n')
+        f.write(f'<h1 class="fp-hero-title">{_esc(s_title)}</h1>\n')
+        orig = show['title_orig'] or ''
+        if orig and orig != s_title:
+            f.write(f'<div class="fp-hero-orig">{_esc(orig)}</div>\n')
+        sc = _score_color(score)
+        f.write(f'<div class="mt-2 mb-1"><span class="score-chip me-2" style="background:{sc}">{score}%</span>')
+        f.write(f'<span class="badge bg-secondary me-2">{year}</span>')
+        for g in genres:
+            f.write(f'<a href="../../genres/{g["oid"]}.html" class="badge bg-dark me-1">{_esc(g["name"])}</a>')
+        f.write('</div>\n')
+        if desc:
+            f.write(f'<p class="fp-hero-desc">{_esc(desc)}</p>\n')
+        f.write('</div>\n</div>\n</div></div>\n')
+
+        f.write('<div class="container-fluid px-4">\n')
+
+        # crew (Regie/Buch)
+        if crew:
+            f.write('<h5 class="fp-section-h5">Regie/Buch</h5>\n<div class="poster-row">\n')
+            for p in crew[:10]:
+                p_oid = p['oid'] or ''
+                p_uri = show_poster_uri_map.get(p['id'], '')
+                job   = p['job'] or ''
+                f.write(_person_card_html(
+                    f'../../persons/{_pshard(p_oid)}/{p_oid}.html' if p_oid else '#',
+                    p_uri, p['name'], is_placeholder=not p_uri,
+                    sublabel=_JOB_DE.get(job, job)) + '\n')
+            f.write('</div>\n')
+
+        # cast
+        if cast:
+            cast_sorted = sorted(cast[:20], key=lambda p: (p['name'] or '').upper())
+            f.write('<h5 class="fp-section-h5">Besetzung</h5>\n<div class="poster-row">\n')
+            for p in cast_sorted:
+                p_oid = p['oid'] or ''
+                p_uri = show_poster_uri_map.get(p['id'], '')
+                f.write(_person_card_html(
+                    f'../../persons/{_pshard(p_oid)}/{p_oid}.html' if p_oid else '#',
+                    p_uri, p['name'], is_placeholder=not p_uri) + '\n')
+            f.write('</div>\n')
+
+        # seasons
+        if seasons:
+            f.write('<h5 class="fp-section-h5">Staffeln</h5>\n')
+            for season in sorted(seasons, key=lambda s: s['season_number']):
+                sn           = season['season_number']
+                season_eps   = eps_by_season.get(sn, [])
+                total_eps    = len(season_eps)
+                local_eps    = sum(1 for ep in season_eps if episode_files_map.get(ep['id']))
+                season_path  = f"{oid}_s{sn}.html"
+                sea_title    = season['title'] or f"Staffel {sn}"
+                sea_year     = season['year']
+                if total_eps > 0 and local_eps == total_eps:
+                    color_cls = 'fp-ep-row-present'
+                elif local_eps > 0:
+                    color_cls = 'fp-ep-row-extra'
+                else:
+                    color_cls = 'fp-ep-row-missing'
+                f.write(f'<div class="file-info-block mb-2 fp-ep-row {color_cls}">\n')
+                f.write('<div class="fp-film-row">\n')
+                f.write(f'<a href="{season_path}">')
+                if poster_uri:
+                    f.write(f'<img src="{poster_uri}" class="fp-poster-sm" alt="">')
+                else:
+                    f.write(f'<div class="poster-placeholder fp-poster-sm-ph">S{sn:02d}</div>')
+                f.write('</a>\n')
+                f.write('<div class="fp-film-body">\n')
+                f.write(f'<div class="file-collection-name">'
+                        f'<span class="badge bg-secondary me-2">S{sn:02d}</span>'
+                        f'<a href="{season_path}">{_esc(sea_title)}</a>'
+                        f'</div>\n')
+                meta = []
+                if sea_year:
+                    meta.append(('Jahr', str(sea_year)))
+                meta.append(('Folgen', f"{local_eps} / {total_eps}"))
+                f.write('<div class="file-meta-grid">\n')
+                for lbl, val in meta:
+                    f.write(f'  <div><div class="fmi-label">{lbl}</div><div class="fmi-value">{val}</div></div>\n')
+                f.write('</div>\n')
+                f.write('</div>\n')  # fp-film-body
+                f.write('</div>\n')  # fp-film-row
+                f.write('</div>\n')  # file-info-block
+
+        # similar shows
+        if similar_shows:
+            f.write('<h5 class="fp-section-h5">Ähnliche Serien</h5>\n<div class="poster-row">\n')
+            for s in similar_shows[:10]:
+                s_uri = show_poster_uri_map.get(s['id'], '')
+                f.write(_poster_card_html(
+                    f'../../shows/{_pshard(s["oid"])}/{s["oid"]}.html',
+                    s_uri, f"{s['title']} ({s['year']})", is_placeholder=not s_uri) + '\n')
+            f.write('</div>\n')
+
+        # similar movies
+        if similar_movies:
+            f.write('<h5 class="fp-section-h5">Ähnliche Filme</h5>\n<div class="poster-row">\n')
+            for m in similar_movies:
+                m_oid = m['oid']
+                m_uri = (poster_uri_map or {}).get(m['id'], '')
+                f.write(_poster_card_html(
+                    f'../../media/{_pshard(m_oid)}/{m_oid}.html',
+                    m_uri, f"{m['title']} ({m['year']})", is_placeholder=not m_uri) + '\n')
+            f.write('</div>\n')
+
+        f.write('</div>\n')
+        _foot(f, '../../')
+
+
+def _ep_file_meta(file_row):
+    """Return list of (label, value) metadata pairs for an episode file row."""
+    meta = []
+    if file_row['size']:
+        meta.append(('Größe',     f"{file_row['size']/1024/1024/1024:.2f} GB"))
+    if file_row['duration']:
+        meta.append(('Dauer',     f"{file_row['duration']/60:.0f} min"))
+    if file_row['width']:
+        meta.append(('Auflösung', f"{file_row['width']}×{file_row['height']}"))
+    if file_row['codec']:
+        meta.append(('Codec',     {'hevc': 'H.265', 'h264': 'H.264'}.get(file_row['codec'], file_row['codec'].upper())))
+    if file_row['added']:
+        meta.append(('Hinzugefügt', datetime.datetime.fromtimestamp(file_row['added']).strftime('%d.%m.%Y')))
+    if file_row['tvstation']:
+        meta.append(('Sender',    tvstation_module.display_name(file_row['tvstation'])))
+    return meta
+
+
+def _write_season_page(out_path, show, season, episodes, episode_files_map,
+                       show_poster_uri, site_title,
+                       screenshot_map=None, unmatched_files=None):
+    show_oid  = show['oid']
+    sn        = season['season_number']
+    s_title   = show['title']
+    sea_title = season['title'] or f"Staffel {sn}"
+
+    ep_by_num = {ep['episode_number']: ep for ep in episodes}
+    max_ep    = max(ep_by_num.keys()) if ep_by_num else 0
+
+    # Filter unmatched files that appear to belong to this season via filename
+    orange_files = []
+    if unmatched_files:
+        pat = re.compile(r'[Ss]0*' + str(sn) + r'[Ee](\d+)', re.IGNORECASE)
+        for frow in unmatched_files:
+            m = pat.search(frow['filename'])
+            if m:
+                orange_files.append((int(m.group(1)), frow))
+        orange_files.sort(key=lambda x: x[0])
+
+    def _thumb_html(file_row):
+        """Return img or placeholder for an episode file thumbnail."""
+        fid = file_row['id']
+        sc_list = (screenshot_map or {}).get(fid, [])
+        if sc_list:
+            gid = f'fp-sc-{fid}'
+            return (f'<img src="{sc_list[0]}" class="fp-ep-thumb" alt=""'
+                    f' style="cursor:pointer" onclick="openLightboxGroup(\'{gid}\',0)">')
+        if show_poster_uri:
+            return f'<img src="{show_poster_uri}" class="fp-ep-thumb" alt="" style="opacity:.35">'
+        return f'<div class="fp-ep-thumb-ph">S{sn:02d}</div>'
+
+    def _sc_group_html(file_row):
+        """Return inline screenshot group HTML for the episode row, or ''."""
+        fid = file_row['id']
+        sc_list = (screenshot_map or {}).get(fid, [])
+        if not sc_list:
+            return ''
+        gid = f'fp-sc-{fid}'
+        parts = [f'<span id="{gid}" class="fp-sc-group">']
+        for i, uri in enumerate(sc_list):
+            if i < 3:
+                parts.append(f'<img src="{uri}" class="fp-sc-thumb"'
+                              f' onclick="openLightboxGroup(\'{gid}\',{i})" alt="">')
+            else:
+                parts.append(f'<img src="{uri}" class="fp-sc-hidden" alt="">')
+        parts.append('</span>')
+        return ''.join(parts)
+
+    with open(out_path, 'w', encoding='utf-8') as f:
+        _head(f, f"{s_title} – S{sn:02d}", '../../')
+        nav_links = [('← Index', '../../index.html'),
+                     (f'← {_esc(s_title)}', f'{show_oid}.html')]
+        _navbar(f, s_title, '../../index.html', nav_links)
+
+        f.write('<div class="container-fluid px-4 mt-4">\n')
+        f.write(f'<h2 class="fp-hero-title">{_esc(s_title)}</h2>\n')
+        f.write(f'<h4 class="text-muted mb-4">Staffel {sn}')
+        if season['title'] and season['title'] != f"Staffel {sn}":
+            f.write(f' – {_esc(season["title"])}')
+        f.write('</h4>\n')
+
+        for ep_num in range(1, max_ep + 1):
+            ep = ep_by_num.get(ep_num)
+            if ep is None:
+                # Red — genuine TMDB numbering gap
+                f.write(f'<div class="file-info-block mb-2 fp-ep-row fp-ep-row-missing">\n')
+                f.write(f'  <span class="badge bg-danger me-2">E{ep_num:02d}</span>'
+                        f'  <span class="text-muted" style="font-size:.82rem">nicht in TMDB</span>\n')
+                f.write('</div>\n')
+                continue
+
+            files    = episode_files_map.get(ep['id'], [])
+            ep_title = ep['title'] or ''
+            ep_score = int(ep['score'] or 0)
+            sc_col   = _score_color(ep_score)
+
+            if files:
+                # Green — present
+                for file_row in files:
+                    fname    = file_row['filename']
+                    fname_js = fname.replace('\\', '\\\\').replace("'", "\\'")
+                    tvst     = file_row['tvstation'] or ''
+                    f.write(f'<div class="file-info-block mb-2 fp-ep-row fp-ep-row-present">\n')
+                    f.write('<div class="fp-film-row">\n')
+                    f.write(_thumb_html(file_row) + '\n')
+                    f.write('<div class="fp-film-body">\n')
+                    f.write('<div class="file-collection-name">\n')
+                    f.write(f'  <span class="badge bg-secondary me-1">E{ep_num:02d}</span>\n')
+                    if ep_score:
+                        f.write(f'  <span class="score-chip score-chip-sm me-1" style="background:{sc_col}">{ep_score}%</span>\n')
+                    if ep_title:
+                        f.write(f'  <span>{_esc(ep_title)}</span>\n')
+                    if tvst:
+                        logo = tvstation_module.get_logo(tvst)
+                        if logo:
+                            sname = tvstation_module.display_name(tvst)
+                            f.write(f'  <img src="data:image/png;base64,{logo}" style="max-height:1.1em;max-width:60px;opacity:.6;margin-left:.4rem" title="{_esc(sname)}">\n')
+                    f.write('</div>\n')
+                    meta = _ep_file_meta(file_row)
+                    if meta:
+                        f.write('<div class="file-meta-grid">\n')
+                        for lbl, val in meta:
+                            f.write(f'  <div><div class="fmi-label">{lbl}</div><div class="fmi-value">{_esc(val)}</div></div>\n')
+                        f.write('</div>\n')
+                    sc_grp = _sc_group_html(file_row)
+                    if sc_grp:
+                        f.write(sc_grp + '\n')
+                    f.write(f'<button class="copy-btn" onclick="copyToClipboard(\'{fname_js}\',this)">📋 {_esc(shorten_middle(fname, 65))}</button>\n')
+                    f.write('</div>\n')  # fp-film-body
+                    f.write('</div>\n')  # fp-film-row
+                    f.write('</div>\n')  # file-info-block
+            else:
+                # Yellow — in TMDB but no local file
+                f.write(f'<div class="file-info-block mb-2 fp-ep-row fp-ep-row-absent">\n')
+                f.write('<div class="fp-film-row">\n')
+                if show_poster_uri:
+                    f.write(f'<img src="{show_poster_uri}" class="fp-ep-thumb" alt="" style="opacity:.35">\n')
+                else:
+                    f.write(f'<div class="fp-ep-thumb-ph">S{sn:02d}</div>\n')
+                f.write('<div class="fp-film-body">\n')
+                f.write('<div class="file-collection-name">\n')
+                f.write(f'  <span class="badge bg-warning text-dark me-1">E{ep_num:02d}</span>\n')
+                if ep_score:
+                    f.write(f'  <span class="score-chip score-chip-sm me-1" style="background:{sc_col}">{ep_score}%</span>\n')
+                if ep_title:
+                    f.write(f'  <span class="text-muted">{_esc(ep_title)}</span>\n')
+                f.write('</div>\n')
+                f.write('<div class="text-muted" style="font-size:.8rem">nicht vorhanden</div>\n')
+                f.write('</div>\n')  # fp-film-body
+                f.write('</div>\n')  # fp-film-row
+                f.write('</div>\n')  # file-info-block
+
+        # Orange — files present but episode not in TMDB
+        for ep_num_guess, file_row in orange_files:
+            fname    = file_row['filename']
+            fname_js = fname.replace('\\', '\\\\').replace("'", "\\'")
+            f.write(f'<div class="file-info-block mb-2 fp-ep-row fp-ep-row-extra">\n')
+            f.write('<div class="fp-film-row">\n')
+            f.write(_thumb_html(file_row) + '\n')
+            f.write('<div class="fp-film-body">\n')
+            f.write('<div class="file-collection-name">\n')
+            f.write(f'  <span class="badge me-1" style="background:rgba(255,140,0,.8)">E{ep_num_guess:02d}</span>\n')
+            f.write('  <span class="text-muted" style="font-size:.82rem">nicht in TMDB</span>\n')
+            f.write('</div>\n')
+            meta = _ep_file_meta(file_row)
+            if meta:
+                f.write('<div class="file-meta-grid">\n')
+                for lbl, val in meta:
+                    f.write(f'  <div><div class="fmi-label">{lbl}</div><div class="fmi-value">{_esc(val)}</div></div>\n')
+                f.write('</div>\n')
+            sc_grp = _sc_group_html(file_row)
+            if sc_grp:
+                f.write(sc_grp + '\n')
+            f.write(f'<button class="copy-btn" onclick="copyToClipboard(\'{fname_js}\',this)">📋 {_esc(shorten_middle(fname, 65))}</button>\n')
+            f.write('</div>\n')  # fp-film-body
+            f.write('</div>\n')  # fp-film-row
+            f.write('</div>\n')  # file-info-block
+
+        f.write('</div>\n')
+        _foot(f, '../../')
+
+
 # ---------- plugin interface ----------
 
 def parse_args(remaining):
@@ -1503,7 +2070,7 @@ def export(db, collection, args, plugin_args):
         print(f"ERROR: '{targetpath}' already exists (use --overwrite to update in place)")
         sys.exit(2)
     os.makedirs(targetpath, exist_ok=True)
-    for sub in ('assets', 'media', 'persons', 'genres', 'tags', 'tvstations'):
+    for sub in ('assets', 'media', 'persons', 'genres', 'tags', 'tvstations', 'shows'):
         os.makedirs(os.path.join(targetpath, sub), exist_ok=True)
 
     # --- write static assets ---
@@ -1537,24 +2104,49 @@ def export(db, collection, args, plugin_args):
     actors      = database.getActors(db, col_where or None, params=col_params or None)
     actor_ids   = [a['id'] for a in actors]
     profile_map = database.get_actor_attachments_bulk(db, actor_ids, 'profile')
-    movies_by_actor = database.getMoviesByActor_bulk(db, actor_ids)
+    movies_by_actor  = database.getMoviesByActor_bulk(db, actor_ids)
+    tvshows_by_actor = database.getTVShowsByActor_bulk(db, actor_ids)
 
-    # actors with at least 2 movies in the current collection
+    # --- TV show data ---
+    tv_shows     = database.getTVShows(db, col_where or None, params=col_params or None)
+    show_ids     = [s['id'] for s in tv_shows]
+    tvshow_by_id = {s['id']: s for s in tv_shows}
+
+    tv_seasons_map        = database.getTVSeasons_bulk(db, show_ids)
+    tv_episodes_map       = database.getEpisodes_bulk(db, show_ids)
+    tv_episode_files_map  = database.getEpisodeFiles_bulk(db, show_ids)
+    tv_unmatched_files_map = database.getUnmatchedEpisodeFiles_bulk(db, show_ids)
+    tv_cast_map           = database.getTVCast_bulk(db, show_ids)
+    tv_crew_map           = database.getTVCrew_bulk(db, show_ids)
+    tv_genre_map          = database.getTVGenres_bulk(db, show_ids)
+    tvshow_poster_map     = database.get_tvshow_attachments_bulk(db, show_ids, 'tvshow_poster')
+
+    # actors with at least 2 movies OR TV show appearances in the current collection
     qualified_actor_ids = {
         aid for aid in actor_ids
-        if sum(1 for m in movies_by_actor.get(aid, []) if m['id'] in movie_by_id) >= 2
+        if (sum(1 for m in movies_by_actor.get(aid, []) if m['id'] in movie_by_id) +
+            sum(1 for s in tvshows_by_actor.get(aid, []) if s['id'] in tvshow_by_id)) >= 2
     }
 
     tags_list = tags.tag_list(db)
 
+    cur = db.cursor()
+
     # tags per movie (movie_id → set of tag IDs)
     tag_sql = ('SELECT DISTINCT f.movie_id, ft.t_id FROM files_tags ft JOIN files f ON ft.f_id = f.id'
-               + (f' WHERE {col_where}' if col_where else ''))
-    cur = db.cursor()
+               + (' WHERE f.movie_id IS NOT NULL' if not col_where else f' WHERE f.movie_id IS NOT NULL AND {col_where}'))
     cur.execute(tag_sql, col_params)
     tag_by_movie = {}
     for row in cur.fetchall():
         tag_by_movie.setdefault(row[0], set()).add(row[1])
+
+    # tags per TV show (tvshow_id → set of tag IDs)
+    tv_tag_sql = ('SELECT DISTINCT f.tvshow_id, ft.t_id FROM files_tags ft JOIN files f ON ft.f_id = f.id'
+                  + (' WHERE f.tvshow_id IS NOT NULL' if not col_where else f' WHERE f.tvshow_id IS NOT NULL AND {col_where}'))
+    cur.execute(tv_tag_sql, col_params)
+    tag_by_show = {}
+    for row in cur.fetchall():
+        tag_by_show.setdefault(row[0], set()).add(row[1])
 
     # --- encode all images in parallel ---
     verbose("Encoding images...", 1)
@@ -1566,10 +2158,10 @@ def export(db, collection, args, plugin_args):
 
     poster_uri_map   = {}
     poster_thumb_map = {}
-    movie_tasks = [(m['id'], bytes(poster_map[m['id']][0]['data']))
-                   for m in movies if poster_map.get(m['id'])]
+    movie_poster_tasks = [(m['id'], bytes(poster_map[m['id']][0]['data']))
+                          for m in movies if poster_map.get(m['id'])]
     with ThreadPoolExecutor(max_workers=_ENCODE_WORKERS) as ex:
-        for mid, full, thumb in ex.map(_enc_movie_images, movie_tasks):
+        for mid, full, thumb in ex.map(_enc_poster_images, movie_poster_tasks):
             if full:  poster_uri_map[mid]   = full
             if thumb: poster_thumb_map[mid] = thumb
 
@@ -1583,9 +2175,20 @@ def export(db, collection, args, plugin_args):
             if full:  portrait_uri_map[aid]   = full
             if thumb: portrait_thumb_map[aid] = thumb
 
-    # --- encode screenshot images ---
+    show_poster_uri_map   = {}
+    show_poster_thumb_map = {}
+    show_poster_tasks = [(s['id'], bytes(tvshow_poster_map[s['id']][0]['data']))
+                         for s in tv_shows if tvshow_poster_map.get(s['id'])]
+    with ThreadPoolExecutor(max_workers=_ENCODE_WORKERS) as ex:
+        for sid, full, thumb in ex.map(_enc_poster_images, show_poster_tasks):
+            if full:  show_poster_uri_map[sid]   = full
+            if thumb: show_poster_thumb_map[sid] = thumb
+
+    # --- encode screenshot images (movies + TV episode files) ---
     all_file_ids = [col['id'] for cols in collections_map.values() for col in cols]
-    raw_screenshot_map = database.get_file_attachments_bulk(db, all_file_ids, 'screenshot') if all_file_ids else {}
+    tv_ep_file_ids = [frow['id'] for file_rows in tv_episode_files_map.values() for frow in file_rows]
+    all_sc_file_ids = list(set(all_file_ids) | set(tv_ep_file_ids))
+    raw_screenshot_map = database.get_file_attachments_bulk(db, all_sc_file_ids, 'screenshot') if all_sc_file_ids else {}
     screenshots_by_file = {}  # file_id → [data_uri, ...]
     sc_tasks = [(fid, [bytes(att['data']) for att in atts])
                 for fid, atts in raw_screenshot_map.items()]
@@ -1607,11 +2210,27 @@ def export(db, collection, args, plugin_args):
         for mid, file_list in movie_screenshot_files.items()
     }
 
-    # --- movies_by_genre for genre pages ---
+    # --- movies/shows by genre/year/tag for detail pages ---
     movies_by_genre_id = {}
     for mid, genre_list in genre_map.items():
         for g in genre_list:
             movies_by_genre_id.setdefault(g['id'], []).append(mid)
+
+    shows_by_genre_id = {}
+    for sid, genre_list in tv_genre_map.items():
+        for g in genre_list:
+            shows_by_genre_id.setdefault(g['id'], []).append(tvshow_by_id[sid])
+
+    shows_by_year = {}
+    for s in tv_shows:
+        if s['year']:
+            shows_by_year.setdefault(s['year'], []).append(s)
+
+    shows_by_tag_id = {}
+    for sid, tag_ids in tag_by_show.items():
+        if sid in tvshow_by_id:
+            for tid in tag_ids:
+                shows_by_tag_id.setdefault(tid, []).append(tvshow_by_id[sid])
 
     # --- inline SQL helpers ---
     cur = db.cursor()
@@ -1722,13 +2341,63 @@ def export(db, collection, args, plugin_args):
         _col_params())
     random_persons = cur.fetchall()
 
+    # newest 20 TV shows (by most recently added file, via tvshow_id so unmatched-episode shows are included)
+    newest_shows = []
+    if show_ids:
+        cur.execute(
+            f'SELECT DISTINCT s.id, s.oid, s.title, s.year, s.score '
+            f'FROM tvshows s '
+            f'JOIN files f ON f.tvshow_id = s.id{_col_wh()} '
+            f'ORDER BY f.added DESC, s.title COLLATE NOCASE ASC LIMIT 20',
+            _col_params())
+        newest_shows = cur.fetchall()
+
+    # top 20 TV shows (has poster, score < 100; via tvshow_id so unmatched-episode shows are included)
+    top_shows = []
+    if show_ids:
+        wh_tv = ('WHERE ' if not col_where else f'WHERE {col_where} AND ') + "s.score < 100 AND EXISTS (SELECT 1 FROM attachments a WHERE a.ref_id=s.id AND a.type='tvshow_poster')"
+        cur.execute(
+            f'SELECT DISTINCT s.id, s.oid, s.title, s.year, s.score '
+            f'FROM tvshows s '
+            f'JOIN files f ON f.tvshow_id = s.id {wh_tv} '
+            f'ORDER BY s.score DESC, s.title COLLATE NOCASE ASC LIMIT 20',
+            _col_params())
+        top_shows = cur.fetchall()
+
     # --- compute similarity ---
     verbose("Computing similarity scores...", 1)
     top_similar = _compute_top_similar(movies, genre_map, cast_map, crew_map, tag_by_movie, top_n=20)
 
+    # --- cross-type similarity (movie ↔ tvshow, genre overlap + score proximity) ---
+    movie_to_similar_shows = {}   # movie_id  → [show, ...]
+    show_to_similar_movies = {}   # show_id   → [movie, ...]
+    if movies and tv_shows:
+        for m in movies:
+            m_genres = {g['id'] for g in genre_map.get(m['id'], [])}
+            m_score  = m['score'] or 0
+            scored = []
+            for s in tv_shows:
+                overlap   = len(m_genres & {g['id'] for g in tv_genre_map.get(s['id'], [])})
+                score_sim = max(0, 1.0 - abs(m_score - (s['score'] or 0)) / 100)
+                scored.append((overlap * 0.7 + score_sim * 0.3, s))
+            scored.sort(key=lambda x: -x[0])
+            movie_to_similar_shows[m['id']] = [x[1] for x in scored[:10] if x[0] > 0]
+        for s in tv_shows:
+            s_genres = {g['id'] for g in tv_genre_map.get(s['id'], [])}
+            s_score  = s['score'] or 0
+            scored = []
+            for m in movies:
+                overlap   = len(s_genres & {g['id'] for g in genre_map.get(m['id'], [])})
+                score_sim = max(0, 1.0 - abs(s_score - (m['score'] or 0)) / 100)
+                scored.append((overlap * 0.7 + score_sim * 0.3, m))
+            scored.sort(key=lambda x: -x[0])
+            show_to_similar_movies[s['id']] = [x[1] for x in scored[:10] if x[0] > 0]
+
     # --- write movie pages ---
     verbose(f"Writing {len(movies)} movie pages...", 1)
     for m in movies:
+        if not m['oid']:
+            continue
         mid  = m['id']
         shard_dir = os.path.join(targetpath, 'media', _pshard(m['oid']))
         os.makedirs(shard_dir, exist_ok=True)
@@ -1746,33 +2415,26 @@ def export(db, collection, args, plugin_args):
             poster_uri_map.get(mid, ''),
             jellyfin, similar_movies,
             poster_uri_map, portrait_uri_map,
-            movie_screenshot_data.get(mid, []))
-
-    # --- write screenshot detail pages ---
-    sc_page_count = len(movie_screenshot_files)
-    if sc_page_count:
-        verbose(f"Writing {sc_page_count} screenshot pages...", 1)
-        for m in movies:
-            file_list = movie_screenshot_files.get(m['id'])
-            if not file_list:
-                continue
-            shard_dir = os.path.join(targetpath, 'screenshots', _pshard(m['oid']))
-            os.makedirs(shard_dir, exist_ok=True)
-            path = os.path.join(shard_dir, f"{m['oid']}.html")
-            _write_screenshot_page(path, m['title'], m['oid'], file_list)
+            movie_screenshot_data.get(mid, []),
+            similar_tvshows=movie_to_similar_shows.get(mid, []),
+            show_poster_uri_map=show_poster_uri_map)
 
     # --- write person pages ---
     qualified_actors = [a for a in actors if a['id'] in qualified_actor_ids]
     verbose(f"Writing {len(qualified_actors)} person pages...", 1)
     for a in qualified_actors:
+        if not a['oid']:
+            continue
         aid       = a['id']
         shard_dir = os.path.join(targetpath, 'persons', _pshard(a['oid']))
         os.makedirs(shard_dir, exist_ok=True)
         path = os.path.join(shard_dir, f"{a['oid']}.html")
         actor_movies = [m for m in movies_by_actor.get(aid, []) if m['id'] in movie_by_id]
+        actor_shows  = [s for s in tvshows_by_actor.get(aid, []) if s['id'] in tvshow_by_id]
         _write_person_page(
             path, a, portrait_uri_map.get(aid, ''), actor_movies, poster_uri_map,
-            collections_map=collections_map, jellyfin=jellyfin)
+            collections_map=collections_map, jellyfin=jellyfin,
+            tvshows=actor_shows, show_poster_uri_map=show_poster_uri_map)
 
     # --- collect all genres from genre_map ---
     all_genres_dict = {}
@@ -1781,6 +2443,10 @@ def export(db, collection, args, plugin_args):
             all_genres_dict[g['id']] = g
 
     # --- write genre pages ---
+    # include genres from TV shows that don't appear in any movie
+    for sid, genre_list in tv_genre_map.items():
+        for g in genre_list:
+            all_genres_dict[g['id']] = g
     verbose(f"Writing {len(all_genres_dict)} genre pages...", 1)
     for gid, g in all_genres_dict.items():
         genre_movie_ids = movies_by_genre_id.get(gid, [])
@@ -1788,21 +2454,25 @@ def export(db, collection, args, plugin_args):
             [movie_by_id[mid] for mid in genre_movie_ids if mid in movie_by_id],
             key=lambda m: (m['title_normalized'] or m['title']).upper())
         path = os.path.join(targetpath, 'genres', f"{g['oid']}.html")
-        _write_genre_page(path, g['name'], genre_movies, poster_uri_map)
+        _write_genre_page(path, g['name'], genre_movies, poster_uri_map,
+                          tvshows=shows_by_genre_id.get(gid),
+                          show_poster_uri_map=show_poster_uri_map)
 
     # --- write year pages ---
     movies_by_year = {}
     for m in movies:
         if m['year']:
             movies_by_year.setdefault(m['year'], []).append(m)
-    all_years = sorted(movies_by_year.keys(), reverse=True)
+    all_years = sorted(set(movies_by_year.keys()) | set(shows_by_year.keys()), reverse=True)
     verbose(f"Writing {len(all_years)} year pages...", 1)
-    for year, year_movies in movies_by_year.items():
-        year_movies_sorted = sorted(year_movies,
+    for year in all_years:
+        year_movies_sorted = sorted(movies_by_year.get(year, []),
                                     key=lambda m: (m['title_normalized'] or m['title']).upper())
         shard_dir = os.path.join(targetpath, 'genres', _yshard(year))
         os.makedirs(shard_dir, exist_ok=True)
-        _write_year_page(os.path.join(shard_dir, f"{year}.html"), year, year_movies_sorted, poster_uri_map)
+        _write_year_page(os.path.join(shard_dir, f"{year}.html"), year, year_movies_sorted, poster_uri_map,
+                         tvshows=shows_by_year.get(year),
+                         show_poster_uri_map=show_poster_uri_map)
 
     # --- write tag pages ---
     verbose(f"Writing {len(tags_list)} tag pages...", 1)
@@ -1810,7 +2480,9 @@ def export(db, collection, args, plugin_args):
         t_movies_sorted = sorted(tags.getMoviesByTagid(db, t['id'], col_where or None, col_params or None),
                                  key=lambda m: m['title'].upper())
         path = os.path.join(targetpath, 'tags', f"{t['oid']}.html")
-        _write_tag_page(path, t['tag'], t_movies_sorted, poster_uri_map, movie_by_id)
+        _write_tag_page(path, t['tag'], t_movies_sorted, poster_uri_map, movie_by_id,
+                        tvshows=shows_by_tag_id.get(t['id']),
+                        show_poster_uri_map=show_poster_uri_map)
 
     # --- build tvstation data and write pages ---
     tvstation_movie_ids = {}  # station_key → set of movie_ids
@@ -1819,19 +2491,80 @@ def export(db, collection, args, plugin_args):
             if col['tvstation']:
                 tvstation_movie_ids.setdefault(col['tvstation'], set()).add(mid)
 
-    tvstations = sorted(tvstation_movie_ids.keys(),
-                        key=lambda k: tvstation_module.display_name(k).upper())
+    tvstation_show_ids = {}
+    for file_rows in tv_episode_files_map.values():
+        for frow in file_rows:
+            if frow['tvstation'] and frow['tvshow_id']:
+                tvstation_show_ids.setdefault(frow['tvstation'], set()).add(frow['tvshow_id'])
+    for tvshow_id, file_rows in tv_unmatched_files_map.items():
+        for frow in file_rows:
+            if frow['tvstation']:
+                tvstation_show_ids.setdefault(frow['tvstation'], set()).add(tvshow_id)
+
+    tvstations = sorted(
+        tvstation_movie_ids.keys() | tvstation_show_ids.keys(),
+        key=lambda k: tvstation_module.display_name(k).upper())
     verbose(f"Writing {len(tvstations)} TV station pages...", 1)
     for key in tvstations:
         station_movies = sorted(
-            [movie_by_id[mid] for mid in tvstation_movie_ids[key] if mid in movie_by_id],
+            [movie_by_id[mid] for mid in tvstation_movie_ids.get(key, set()) if mid in movie_by_id],
             key=lambda m: (m['title_normalized'] or m['title']).upper())
+        station_shows = sorted(
+            [tvshow_by_id[sid] for sid in tvstation_show_ids.get(key, set()) if sid in tvshow_by_id],
+            key=lambda s: (s['title_normalized'] or s['title']).upper())
         path = os.path.join(targetpath, 'tvstations', f"{key}.html")
-        _write_tvstation_page(path, key, station_movies, poster_uri_map)
+        _write_tvstation_page(path, key, station_movies, poster_uri_map,
+                              tvshows=station_shows, show_poster_uri_map=show_poster_uri_map)
+
+    # --- write TV show and season pages ---
+    verbose(f"Writing {len(tv_shows)} TV show pages...", 1)
+    for s in tv_shows:
+        if not s['oid']:
+            continue
+        sid       = s['id']
+        shard_dir = os.path.join(targetpath, 'shows', _pshard(s['oid']))
+        os.makedirs(shard_dir, exist_ok=True)
+        path = os.path.join(shard_dir, f"{s['oid']}.html")
+        s_cast   = [p for p in tv_cast_map.get(sid, []) if p['id'] in qualified_actor_ids]
+        s_crew   = [p for p in tv_crew_map.get(sid, []) if p['id'] in qualified_actor_ids]
+        s_genres = tv_genre_map.get(sid, [])
+        s_seasons = tv_seasons_map.get(sid, [])
+        # compute similar shows (by shared genres + score proximity)
+        similar_shows = []
+        s_genre_ids = {g['id'] for g in s_genres}
+        scored = []
+        for other in tv_shows:
+            if other['id'] == sid:
+                continue
+            other_genre_ids = {g['id'] for g in tv_genre_map.get(other['id'], [])}
+            overlap = len(s_genre_ids & other_genre_ids)
+            score_sim = max(0, 1.0 - abs((s['score'] or 0) - (other['score'] or 0)) / 100)
+            scored.append((overlap * 0.7 + score_sim * 0.3, other))
+        scored.sort(key=lambda x: -x[0])
+        similar_shows = [x[1] for x in scored[:10]]
+        _write_show_page(
+            path, s, s_seasons, tv_episodes_map, tv_episode_files_map,
+            s_cast, s_crew, s_genres,
+            show_poster_uri_map.get(sid, ''),
+            similar_shows, {**portrait_uri_map, **show_poster_uri_map},
+            title, jellyfin,
+            similar_movies=show_to_similar_movies.get(sid, []),
+            poster_uri_map=poster_uri_map)
+        show_unmatched = tv_unmatched_files_map.get(sid, [])
+        for season in s_seasons:
+            season_path = os.path.join(shard_dir, f"{s['oid']}_s{season['season_number']}.html")
+            season_eps  = [ep for ep in tv_episodes_map.get(sid, [])
+                           if ep['season_number'] == season['season_number']]
+            _write_season_page(season_path, s, season, season_eps,
+                               tv_episode_files_map, show_poster_uri_map.get(sid, ''), title,
+                               screenshot_map=screenshots_by_file,
+                               unmatched_files=show_unmatched)
 
     # --- build search index ---
     search_index = []
     for m in movies:
+        if not m['oid']:
+            continue
         search_index.append({
             'type':    'movie',
             'q':       f"{m['title']} {m['title_orig']}",
@@ -1840,7 +2573,20 @@ def export(db, collection, args, plugin_args):
             'url':     f"media/{_pshard(m['oid'])}/{m['oid']}.html",
             'poster':  poster_thumb_map.get(m['id'], ''),
         })
+    for s in tv_shows:
+        if not s['oid']:
+            continue
+        search_index.append({
+            'type':    'show',
+            'q':       f"{s['title']} {s['title_orig'] or ''}",
+            'display': _esc(s['title']),
+            'year':    s['year'],
+            'url':     f"shows/{_pshard(s['oid'])}/{s['oid']}.html",
+            'poster':  show_poster_thumb_map.get(s['id'], ''),
+        })
     for a in qualified_actors:
+        if not a['oid']:
+            continue
         shard = _pshard(a['oid'])
         search_index.append({
             'type':     'person',
@@ -1867,6 +2613,8 @@ def export(db, collection, args, plugin_args):
         popular_persons, newest_persons, random_persons,
         list(all_genres_dict.values()), tags_list, all_years,
         poster_uri_map, portrait_uri_map,
-        tvstations)
+        tvstations,
+        newest_shows=newest_shows, top_shows=top_shows,
+        show_poster_uri_map=show_poster_uri_map)
 
     verbose(f"streamer export complete → {targetpath}", 1)

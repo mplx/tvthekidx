@@ -9,16 +9,18 @@ import os
 import re
 import sys
 
-from . import database, export, files, online, tags
+from . import database, migration, export, files, online, tags
 from ._version import __version__
 from .utility import getVerbosity, setVerbosity, verbose
 
 
 def indexer(args, remaining=None):
-    if args.libType != "movies":
-        print(
-            "ERROR: currently only type 'movies' supported (tvshows require a different TMDB API)"
-        )
+    if args.libType in ("tvshow", "tvshows"):
+        args.libType = "tvshows"
+    elif args.libType in ("movie", "movies"):
+        args.libType = "movies"
+    else:
+        print(f"ERROR: unknown content type '{args.libType}' (supported: movies, tvshows)")
         sys.exit(2)
 
     if not os.path.isfile(args.dbfile):
@@ -26,13 +28,19 @@ def indexer(args, remaining=None):
         sys.exit(2)
 
     verbose(f"Indexing path '{args.libPath}' for collection '{args.collection}'")
-    db = database.initialize_db(args.dbfile)
-    movie, search = online.initialize_tmdb(args.tmdbApiKey)
+    db = migration.initialize_db(args.dbfile)
+    movie, search, tv = online.initialize_tmdb(args.tmdbApiKey)
 
-    files.scanDir(db, args.collection, args.libPath, args.recursiveSearch)
-    database.scanMovies(db, search)
-    database.scanCredits(db, movie)
-    database.scanGenres(db, movie)
+    files.scanDir(db, args.collection, args.libPath, args.recursiveSearch, args.libType)
+
+    if args.libType == "tvshows":
+        database.scanTVShows(db, search, tv)
+        database.scanTVCredits(db, tv)
+        database.scanTVGenres(db, tv)
+    else:
+        database.scanMovies(db, search)
+        database.scanMovieCredits(db, movie)
+        database.scanMovieGenres(db, movie)
 
 
 def exporter(args, remaining):
@@ -56,7 +64,7 @@ def maintenance(args, remaining=None):
             print(f"ERROR: database '{args.dbfile}' already exists")
             sys.exit(2)
         verbose("Creating database")
-        database.initialize_db(args.dbfile)
+        migration.initialize_db(args.dbfile)
         return
 
     if not os.path.isfile(args.dbfile):
@@ -69,7 +77,7 @@ def maintenance(args, remaining=None):
         database.cleanup_db(db)
     elif args.action == "upgradedb":
         verbose("Upgrading database schema")
-        database.upgrade_db(args.dbfile)
+        migration.upgrade_db(args.dbfile)
 
     elif args.action == "detecttvstations":
         verbose("Detecting TV stations from screenshots")
@@ -90,20 +98,41 @@ def maintenance(args, remaining=None):
             sys.exit(2)
         limit_str = f", limit {args.limit}" if args.limit else ""
         verbose(f"Backfilling genres from TMDB{limit_str}")
-        movie, _ = online.initialize_tmdb(args.tmdbApiKey)
-        database.scanGenres(db, movie, limit=args.limit)
+        movie, _s, _tv = online.initialize_tmdb(args.tmdbApiKey)
+        database.scanMovieGenres(db, movie, limit=args.limit)
+
+    elif args.action == "backfilltvgenres":
+        if not args.tmdbApiKey:
+            print("ERROR: --key is required for backfilltvgenres")
+            sys.exit(2)
+        limit_str = f", limit {args.limit}" if args.limit else ""
+        verbose(f"Backfilling TV show genres from TMDB{limit_str}")
+        _m, _s, tv = online.initialize_tmdb(args.tmdbApiKey)
+        database.scanTVGenres(db, tv)
 
     elif args.action == "refreshmovie":
         if not args.tmdbApiKey:
             print("ERROR: --key is required for refreshmovie")
             sys.exit(2)
-        movie, _ = online.initialize_tmdb(args.tmdbApiKey)
+        movie, _s, _tv = online.initialize_tmdb(args.tmdbApiKey)
         if args.tmdbId:
             verbose(f"Refreshing movie TMDB ID {args.tmdbId}")
             database.refresh_movie(db, movie, args.tmdbId)
         else:
             verbose("Bulk refresh: top-10 by score + 10 random + 10 oldest-refreshed")
             database.refresh_movies_bulk(db, movie)
+
+    elif args.action == "refreshtvshow":
+        if not args.tmdbApiKey:
+            print("ERROR: --key is required for refreshtvshow")
+            sys.exit(2)
+        _m, _s, tv = online.initialize_tmdb(args.tmdbApiKey)
+        if args.tmdbId:
+            verbose(f"Refreshing TV show TMDB ID {args.tmdbId}")
+            database.refresh_tvshow(db, tv, args.tmdbId)
+        else:
+            verbose("Bulk TV show refresh: top-10 by score + 10 random + 10 oldest-refreshed")
+            database.refresh_tvshows_bulk(db, tv)
 
     elif args.action == "resetcounters":
         verbose("Resetting cast/genre error counters")
@@ -165,7 +194,7 @@ def tagging(args, remaining=None):
         print(f"ERROR: database '{args.dbfile}' not found")
         sys.exit(2)
 
-    db = database.initialize_db(args.dbfile)
+    db = migration.initialize_db(args.dbfile)
 
     if args.action == "list":
         tags.list(db)
@@ -218,7 +247,7 @@ def main():
     maintenanceparser = subparsers.add_parser("maintenance", help="database and inference maintenance")
     maintenanceparser.set_defaults(func=maintenance)
     maintenanceparser.add_argument("--database", "-d", action="store", dest="dbfile", default="tvthek.db", help="TVthekIdx database")
-    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots/backfillgenres/refreshmovie/resetcounters/setcollectionregex")
+    maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots/backfillgenres/backfilltvgenres/refreshmovie/refreshtvshow/resetcounters/setcollectionregex")
     maintenanceparser.add_argument("--path", "-p", action="store", dest="libPath", default=None, help="path to video files (required for getscreenshots)")
     maintenanceparser.add_argument("--collection", "-c", action="store", dest="collection", default=None, help="collection filter (optional for getscreenshots)")
     maintenanceparser.add_argument("--key", "-k", action="store", dest="tmdbApiKey", default=None, help="TMDB API key (required for refreshmovie/backfillgenres)")

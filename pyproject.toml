@@ -13,10 +13,10 @@ requires-python = ">=3.9"
 dynamic = ["version"]
 
 dependencies = [
-  "tmdbv3api==1.7.7",
+  "tmdbv3api==1.9.0",
   "ffmpeg-python==0.2.0",
-  "moviepy==1.0.3",
-  "pillow==12.2.0",
+  "moviepy==2.2.1",
+  "pillow>=9.2.0,<12.0",
 ]
 
 # https://pypi.org/classifiers/
@@ -40,7 +40,16 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-tvstation = ["ultralytics==8.4.22"]
+tvstation = ["ultralytics==8.4.60"]
+dev = [
+  "build>=1.0.0",
+  "flake8",
+  "pylint",
+  "pytest",
+  "pyinstaller>=6.15.0",
+  "hatchling",
+  "hatch-vcs",
+]
 
 # https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use
 # https://packaging.python.org/specifications/core-metadata/#home-page-optional
@@ -70,8 +79,6 @@ include = [
   "/CHANGELOG.md",
   "/README.md",
   "/LICENSE",
-  "/requirements.txt",
-  "/requirements-dev.txt",
 ]
 
 [tool.pytest.ini_options]

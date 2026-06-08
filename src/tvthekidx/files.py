@@ -4,7 +4,7 @@
 # Copyright (c) 2021-2026 developer@mplx.eu
 
 from . import database as _database
-from .database import execute_sql, addFileToDb, updateLastSeen, create_or_get_collection, get_collection, DEFAULT_MOVIE_REGEX
+from .database import execute_sql, addFileToDb, updateLastSeen, create_or_get_collection, get_collection, DEFAULT_MOVIE_REGEX, DEFAULT_TVSHOW_REGEX
 from .tags import tag_add_by_filename
 from .utility import verbose
 
@@ -14,8 +14,20 @@ import re
 import glob
 
 import ffmpeg
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from PIL import Image
+
+
+def _close_clip(clip):
+    try:
+        clip.reader.close()
+    except Exception:
+        pass
+    try:
+        if clip.audio:
+            clip.audio.reader.close_proc()
+    except Exception:
+        pass
 
 
 def store_screenshot(db, collection_id, m, filename, relpath):
@@ -25,9 +37,9 @@ def store_screenshot(db, collection_id, m, filename, relpath):
     try:
         clip = VideoFileClip(m)
         length = clip.duration
-        clip.reader.close()
-        clip.audio.reader.close_proc()
-    except Exception:
+        _close_clip(clip)
+    except Exception as e:
+        verbose(f"store_screenshot open failed for {filename}: {e}", 2)
         return False
     offsets = [max(0.5, length * 0.2), length * 0.5, length * 0.8]
     _database.delete_file_attachments(db, file_id, 'screenshot')
@@ -37,8 +49,8 @@ def store_screenshot(db, collection_id, m, filename, relpath):
             data = get_screenshot(m, t)
             _database.add_file_attachment(db, file_id, 'screenshot', data)
             captured += 1
-        except Exception:
-            pass
+        except Exception as e:
+            verbose(f"store_screenshot frame at {t:.1f}s failed for {filename}: {e}", 2)
     return captured > 0
 
 
@@ -48,8 +60,7 @@ def get_screenshot(video_path, time):
     if time > length:
         time = int(length / 2)
     screenshot = clip.get_frame(time)
-    clip.reader.close()
-    clip.audio.reader.close_proc()
+    _close_clip(clip)
 
     image = Image.fromarray(screenshot)
     image.thumbnail((600, 600))
@@ -61,14 +72,17 @@ def get_screenshot(video_path, time):
     return img_byte_array
 
 
-def scanDir(db, collection_name, rootDir, recursiveSearch=False):
+def scanDir(db, collection_name, rootDir, recursiveSearch=False, libType="movies"):
     " scan all files found "
     idx = 0
     verbose("Scanning for new files...", 2)
 
     collection_id, _ = create_or_get_collection(db, collection_name)
     collection_row = get_collection(db, collection_name)
-    movie_regex = (collection_row['movie_filename_regex'] if collection_row else None) or DEFAULT_MOVIE_REGEX
+    if libType == "tvshows":
+        file_regex = (collection_row['tvshow_filename_regex'] if collection_row else None) or DEFAULT_TVSHOW_REGEX
+    else:
+        file_regex = (collection_row['movie_filename_regex'] if collection_row else None) or DEFAULT_MOVIE_REGEX
 
     scanPath = os.path.join(rootDir, '')
     if recursiveSearch:
@@ -77,17 +91,20 @@ def scanDir(db, collection_name, rootDir, recursiveSearch=False):
     all_files = list(glob.glob(fn + 'mp4', recursive=recursiveSearch))
     for ext in ('avi', 'm4v', 'mkv', 'mov', 'mpg'):
         all_files += glob.glob(fn + ext, recursive=recursiveSearch)
-    movies = [f for f in all_files if re.search(movie_regex, os.path.basename(f))]
+    files = sorted(
+        [fpath for fpath in all_files if re.search(file_regex, os.path.basename(fpath))],
+        key=lambda fpath: os.path.basename(fpath).lower()
+    )
 
-    for m in movies:
+    for fpath in files:
         idx = idx + 1
-        f = os.path.basename(m)
-        absPath = os.path.dirname(m)
+        f = os.path.basename(fpath)
+        absPath = os.path.dirname(fpath)
         relPath = os.path.relpath(absPath, rootDir)
-        size = os.path.getsize(m)
-        ctime = os.path.getctime(m)
-        mtime = os.path.getmtime(m)
-        entry = addFileToDb(db, collection_id, f, relPath)
+        size = os.path.getsize(fpath)
+        ctime = os.path.getctime(fpath)
+        mtime = os.path.getmtime(fpath)
+        entry = addFileToDb(db, collection_id, f, relPath, libType)
         if entry is True:
             tag_add_by_filename(db, f)
             from . import tvstation as _tvstation
@@ -102,7 +119,7 @@ def scanDir(db, collection_name, rootDir, recursiveSearch=False):
         if ((entry is True) or (size != entry["size"]) or (entry["duration"] is None)):
             verbose(f"Updating meta data for {f}", 2)
             try:
-                probe = ffmpeg.probe(m)
+                probe = ffmpeg.probe(fpath)
                 video_streams = [stream for stream in probe["streams"] if stream["codec_type"] == "video"]
                 width = video_streams[0]['width']
                 height = video_streams[0]['height']
@@ -111,7 +128,7 @@ def scanDir(db, collection_name, rootDir, recursiveSearch=False):
                 result = updateFileMeta(db, f, {"collection_id": collection_id, "size": size, "ctime": ctime, "mtime": mtime, "width": width, "height": height, "duration": duration, "codec": codec, 'screenshot': None})
                 forceScreenshot = True
             except:
-                verbose("ffprobe failed for " + m, 2)
+                verbose("ffprobe failed for " + fpath, 2)
                 result = updateFileMeta(db, f, {"collection_id": collection_id, "size": size, "ctime": ctime, "mtime": mtime, "width": None, "height": None, "duration": None, "codec": None, 'screenshot': None})
                 forceScreenshot = True
             if result is False:
@@ -123,7 +140,7 @@ def scanDir(db, collection_name, rootDir, recursiveSearch=False):
                 existing_screenshots = _database.get_file_attachments(db, file_id, 'screenshot')
         if ((entry is True) or (forceScreenshot is True) or not existing_screenshots):
             verbose(f"Grabbing screenshot for {f}", 2)
-            result = store_screenshot(db, collection_id, m, f, relPath)
+            result = store_screenshot(db, collection_id, fpath, f, relPath)
             if result is False:
                 verbose(f"Grabbing screenshot for {f} failed", 2)
 
@@ -147,6 +164,7 @@ def scanDir(db, collection_name, rootDir, recursiveSearch=False):
 
     " finish "
     db.commit()
+    _database.cleanup_orphan_tvshows(db)
     return None
 
 

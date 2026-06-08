@@ -1,7 +1,7 @@
 import pytest
 
+from tvthekidx import migration
 from tvthekidx.database import (
-    initialize_db,
     addMovieToDb, addActorToDb, addActorToMovieDb,
     addFileToDb, get_file_id,
     add_file_attachment, get_file_attachments,
@@ -34,14 +34,14 @@ _ACTOR = {
 
 @pytest.fixture
 def db(tmp_path):
-    conn = initialize_db(str(tmp_path / "test.db"))
+    conn = migration.initialize_db(str(tmp_path / "test.db"))
     yield conn
     conn.close()
 
 
 class TestInitializeDb:
     def test_returns_connection(self, tmp_path):
-        conn = initialize_db(str(tmp_path / "new.db"))
+        conn = migration.initialize_db(str(tmp_path / "new.db"))
         assert conn is not None
         conn.close()
 
@@ -50,23 +50,24 @@ class TestInitializeDb:
         for table in ("movies", "files", "actors", "actors_movies",
                       "crew_movies", "attachments", "tags", "tags_regex",
                       "files_tags", "settings", "genres", "movies_genres",
-                      "collections"):
+                      "collections", "tvshows", "seasons", "episodes",
+                      "actors_tvshows", "crew_tvshows", "tvshows_genres"):
             cur.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
                 (table,)
             )
             assert cur.fetchone() is not None, f"Missing table: {table}"
 
-    def test_schema_version_is_10(self, db):
+    def test_schema_version_is_14(self, db):
         cur = db.cursor()
         cur.execute("SELECT value_int FROM settings WHERE dbkey='dbversion'")
-        assert cur.fetchone()[0] == 10
+        assert cur.fetchone()[0] == 14
 
     def test_existing_db_reopens(self, tmp_path):
         path = str(tmp_path / "existing.db")
-        c1 = initialize_db(path)
+        c1 = migration.initialize_db(path)
         c1.close()
-        c2 = initialize_db(path)
+        c2 = migration.initialize_db(path)
         assert c2 is not None
         c2.close()
 

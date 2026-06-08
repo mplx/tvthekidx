@@ -3,6 +3,13 @@
 ## [unreleased]
 
 ### Added
+- **TV show support** — index TV show libraries with `-t tvshows`; TMDB TV API used for show/season/episode metadata; full season fetch on first encounter enables missing-episode detection
+- New database tables: `tvshows`, `seasons`, `episodes`, `actors_tvshows`, `crew_tvshows`, `tvshows_genres`; `files.episode_id` FK links files to episodes
+- `refreshtvshow` maintenance action — with `--tmdb-id` re-fetches one TV show; without it runs a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed
+- `backfilltvgenres` maintenance action — fetches genres for existing TV shows that have none (requires `--key`)
+- `resetcounters` now also resets `season_error_count` on TV shows
+- **Streamer exporter** — show pages (hero + cast + seasons overview), season pages (episode grid with green/yellow/red cells for present/absent/unknown episodes), "Neue Serien" and "Top Serien" carousels on index, TV show credits on person pages, TV show entries in search index
+- **HTML exporter** — TV shows section with per-season episode presence squares (green = local file present, yellow = in TMDB but missing locally, red = not in TMDB)
 - Genre support — genres fetched from TMDB and stored in `genres` / `movies_genres` tables; displayed as badges in HTML export
 - `backfillgenres` maintenance action — fetches genres for existing movies that have none (requires `--key`, optional `--limit`)
 - `refreshmovie` maintenance action — with `--tmdb-id` re-fetches one movie; without it runs a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed; stores a `refresh_timestamp` per movie
@@ -16,6 +23,7 @@
 - File discovery via regex — `scanDir` now enumerates files by extension only and applies the collection's movie regex as the filter, replacing the year-anchored glob pre-filter; the regex is the single source of truth for both discovery and title/year extraction
 
 ### Changed
+- Database schema v11 — `tvshows`, `seasons`, `episodes`, `actors_tvshows`, `crew_tvshows`, `tvshows_genres` tables added; `files.episode_id` column added
 - Database schema v10 — `collections` table introduced; `files.collection` TEXT column migrated to `files.collection_id` INTEGER FK; unique index rebuilt on `(collection_id, filename, relpath)`
 
 ---

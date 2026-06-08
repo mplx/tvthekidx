@@ -8,8 +8,10 @@ import datetime
 import base64
 import os
 import random
+import re
 
 from . import database, tags, tvstation as tvstation_module
+from .database import DEFAULT_TVSHOW_REGEX
 from .utility import include_image, verbose
 from ._version import __version__
 
@@ -653,6 +655,137 @@ def writeTagsDetail(db, f, collection):
     f.write('\n</section>\n')
 
 
+def writeTVShowsDetail(db, f, collection):
+    col_where = ""
+    col_params = []
+    if collection:
+        ph = ",".join("?" * len(collection))
+        col_where = f"f.collection_id IN (SELECT id FROM collections WHERE name IN ({ph}))"
+        col_params = list(collection)
+
+    tv_shows = database.getTVShows(db, col_where or None,
+                                   "s.title_normalized COLLATE NOCASE ASC, s.year ASC",
+                                   params=col_params or None)
+    if not tv_shows:
+        return
+
+    show_ids = [s['id'] for s in tv_shows]
+    tv_seasons_map         = database.getTVSeasons_bulk(db, show_ids)
+    tv_episodes_map        = database.getEpisodes_bulk(db, show_ids)
+    tv_episode_files_map   = database.getEpisodeFiles_bulk(db, show_ids)
+    tv_unmatched_files_map = database.getUnmatchedEpisodeFiles_bulk(db, show_ids)
+
+    f.write('<h3 id="tvshows">Serien</h3>\n<section id="tvshowssection">\n')
+    for s in tv_shows:
+        sid   = s['id']
+        title = s['title']
+        year  = s['year']
+        score = int(s['score'] or 0)
+        scorecolor = movieRatingColor(score)
+        desc  = (s['description'] or '')[:400]
+        tmdbid = s['tmdb_id']
+        tmdb_link = f'<a href="https://www.themoviedb.org/tv/{tmdbid}" target="_blank">{title}</a>' if tmdbid else title
+
+        f.write(f'<div class="row p-3" style="border-top:1px solid #333">\n')
+        f.write(f'<div class="col-12"><h4>{tmdb_link} ({year})'
+                f' <span class="badge bg-{scorecolor}">{score}%</span></h4>')
+        if desc:
+            f.write(f'<p class="small text-muted">{desc}</p>')
+        f.write('</div>\n')
+
+        # parse unmatched files into {season_number: {episode_number: filename}}
+        unmatched_by_season = {}
+        for uf in tv_unmatched_files_map.get(sid, []):
+            m = re.search(DEFAULT_TVSHOW_REGEX, uf['filename'])
+            if m:
+                try:
+                    usn = int(m.group('season'))
+                    uen = int(m.group('episode'))
+                    unmatched_by_season.setdefault(usn, {})[uen] = uf['filename']
+                except (IndexError, ValueError):
+                    pass
+
+        # season rows
+        seasons = sorted(tv_seasons_map.get(sid, []), key=lambda x: x['season_number'])
+        all_unmatched_seasons = set(unmatched_by_season.keys())
+        shown_seasons = {season['season_number'] for season in seasons}
+
+        for season in seasons:
+            sn = season['season_number']
+            all_unmatched_seasons.discard(sn)
+            season_eps = [ep for ep in tv_episodes_map.get(sid, [])
+                          if ep['season_number'] == sn]
+            ep_by_num = {ep['episode_number']: ep for ep in season_eps}
+            unmatched_eps = unmatched_by_season.get(sn, {})
+            max_tmdb_ep = max(ep_by_num.keys(), default=0)
+            # only extend the range for unmatched files that fall within TMDB's range;
+            # files beyond max_tmdb_ep are appended after the loop — no phantom red squares
+            extra_orange = sorted(n for n in unmatched_eps if n > max_tmdb_ep)
+
+            s_label = season['title'] or f"Staffel {sn}"
+            local_count = sum(1 for ep in season_eps if tv_episode_files_map.get(ep['id']))
+            unmatched_count = len(unmatched_eps)
+            badge = f'{local_count}/{len(season_eps)} Folgen'
+            if unmatched_count:
+                badge += f' + {unmatched_count} nicht in TMDB'
+            f.write(f'<div class="col-12 ps-4 mb-2">\n')
+            f.write(f'<strong>S{sn:02d} – {s_label}</strong>'
+                    f' <span class="badge bg-secondary">{badge}</span>\n')
+            if max_tmdb_ep or unmatched_eps:
+                f.write('<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">\n')
+                for ep_num in range(1, max_tmdb_ep + 1):
+                    ep = ep_by_num.get(ep_num)
+                    if ep_num in unmatched_eps and ep is None:
+                        color = '#fd7e14'
+                        tip = f'E{ep_num:02d}: Datei vorhanden, nicht in TMDB'
+                    elif ep is None:
+                        # genuine gap within TMDB's own episode range
+                        color = '#dc3545'
+                        tip = f'E{ep_num:02d}: in TMDB-Lücke'
+                    elif tv_episode_files_map.get(ep['id']):
+                        color = '#198754'
+                        tip = f'E{ep_num:02d}: {ep["title"] or ""}'
+                    else:
+                        color = '#ffc107'
+                        tip = f'E{ep_num:02d}: {ep["title"] or ""} (fehlt lokal)'
+                    f.write(f'<span title="{tip}" style="display:inline-block;width:18px;height:18px;'
+                            f'background:{color};border-radius:3px;font-size:.55rem;'
+                            f'line-height:18px;text-align:center;color:#fff">'
+                            f'{ep_num}</span>')
+                for ep_num in extra_orange:
+                    tip = f'E{ep_num:02d}: Datei vorhanden, nicht in TMDB'
+                    f.write(f'<span title="{tip}" style="display:inline-block;width:18px;height:18px;'
+                            f'background:#fd7e14;border-radius:3px;font-size:.55rem;'
+                            f'line-height:18px;text-align:center;color:#fff">'
+                            f'{ep_num}</span>')
+                f.write('\n</div>\n')
+            f.write('</div>\n')
+
+        # seasons that exist only as unmatched files (no TMDB season row at all)
+        for sn in sorted(all_unmatched_seasons):
+            unmatched_eps = unmatched_by_season[sn]
+            max_ep = max(unmatched_eps.keys())
+            f.write(f'<div class="col-12 ps-4 mb-2">\n')
+            f.write(f'<strong>S{sn:02d}</strong>'
+                    f' <span class="badge bg-secondary">{len(unmatched_eps)} nicht in TMDB</span>\n')
+            f.write('<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">\n')
+            for ep_num in range(1, max_ep + 1):
+                if ep_num in unmatched_eps:
+                    color = '#fd7e14'
+                    tip = f'E{ep_num:02d}: Datei vorhanden, nicht in TMDB'
+                else:
+                    color = '#dc3545'
+                    tip = f'E{ep_num:02d}: nicht in TMDB'
+                f.write(f'<span title="{tip}" style="display:inline-block;width:18px;height:18px;'
+                        f'background:{color};border-radius:3px;font-size:.55rem;'
+                        f'line-height:18px;text-align:center;color:#fff">'
+                        f'{ep_num}</span>')
+            f.write('\n</div>\n</div>\n')
+
+        f.write('</div>\n')
+    f.write('</section>\n')
+
+
 # --- Plugin interface ---
 
 def parse_args(remaining):
@@ -674,6 +807,7 @@ def export(db, collection, args, plugin_args):
         if not plugin_args.skipHeader:
             writeMoviesImageTitle(db, f, collection, plugin_args.gfxmode)
         writeMoviesDetail(db, f, collection, plugin_args.gfxmode, plugin_args.targetURL)
+        writeTVShowsDetail(db, f, collection)
         if not plugin_args.skipActors:
             writeActorsDetail(db, f, collection, plugin_args.gfxmode)
         writeTagsDetail(db, f, collection)

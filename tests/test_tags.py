@@ -1,12 +1,13 @@
 import pytest
 
-from tvthekidx.database import initialize_db, addFileToDb, create_or_get_collection
+from tvthekidx import migration
+from tvthekidx.database import addFileToDb, create_or_get_collection
 from tvthekidx.tags import tag_add, tag_list, tag_delete, tag_delete_all, tag_scanfiles
 
 
 @pytest.fixture
 def db(tmp_path):
-    conn = initialize_db(str(tmp_path / "tags.db"))
+    conn = migration.initialize_db(str(tmp_path / "tags.db"))
     yield conn
     conn.close()
 

@@ -28,6 +28,10 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 
 `tvthekidx -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --recursive`
 
+To index TV shows:
+
+`tvthekidx -v index -k "APIKEY" -d tvthek.db -t tvshows -c "TVthek" -p /mnt/TVThek/ --recursive`
+
 (insert your TMDB API key instead of `APIKEY`)
 
 4. generate the html file
@@ -56,6 +60,10 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 
 `tvthekidx -v index -k "APIKEY" -d tvthek.db -t movies -c "TVthek" -p /mnt/TVThek/ --recursive`
 
+To index TV shows:
+
+`tvthekidx -v index -k "APIKEY" -d tvthek.db -t tvshows -c "TVthek" -p /mnt/TVThek/ --recursive`
+
 (insert your TMDB API key instead of `APIKEY`)
 
 5. generate the html file
@@ -78,11 +86,11 @@ Register at [TMDB](https://www.themoviedb.org/) and [get an API key](https://www
 - `-d`, `--database` SQLite database file
 - `-p`, `--path` path to scan for video files
 - `-k`, `--key` TMDB API key
-- `-t`, `--type` content type (`movies`; tvshows not yet supported)
+- `-t`, `--type` content type: `movies` (default) or `tvshows`
 - `-c`, `--collection` collection name
 - `-r`, `--recursive` scan subdirectories recursively
 
-> **Filename convention:** By default, video files must be named `Title (YYYY).ext` (e.g. `Metropolis (1927).mkv`). An optional `{StationKey}` tag anywhere after the year is also captured (e.g. `News (2024) {ARD}.mkv`). Custom per-collection regexes can be stored with the `setcollectionregex` maintenance action.
+> **Filename convention:** By default, video files must be named `Title (YYYY).ext` (e.g. `Metropolis (1927).mkv`). An optional `{StationKey}` tag anywhere after the year is also captured (e.g. `News (2024) {ARD}.mkv`). TV show files must additionally include a season/episode tag, e.g. `Show Title (2022) S01E03.mkv`. Custom per-collection regexes can be stored with the `setcollectionregex` maintenance action.
 
 ## `export` arguments
 
@@ -110,21 +118,27 @@ Generates a multi-file, streaming-service-style site (Netflix/Prime aesthetic) a
 **Output structure:**
 ```
 <targetpath>/
-├── index.html              search + horizontal carousels (Neu, Top, per-genre, Personen, Tags)
+├── index.html              search + carousels (Neu, Top, per-genre, Serien, Personen, Tags)
 ├── assets/
 │   ├── style.css
 │   ├── app.js
 │   └── search.js           search index (generated, not static)
-├── media/                  one .html + .webp poster per movie
+├── media/                  one .html per movie
+├── shows/
+│   └── <x>/                sharded by first char of OID
+│       ├── <oid>.html      show page (hero + cast + seasons overview)
+│       └── <oid>_s<n>.html season page (episode grid)
 ├── persons/
-│   └── <xx>/               sharded by first 2 chars of OID
-│       ├── <oid>.html
-│       └── <oid>.webp      portrait (only for cast/crew linked from movie pages)
+│   └── <x>/                sharded by first char of OID
+│       └── <oid>.html
 ├── genres/                 one .html per genre
-└── tags/                   one .html per tag
+├── tags/                   one .html per tag
+└── tvstations/             one .html per TV station
 ```
 
-Each movie page includes a "Ähnliche Filme" horizontal row of the 10 most similar movies, scored by genres (50 %), shared persons (20 %), tags (15 %), and score proximity (15 %).
+Each movie page includes a "Ähnliche Filme" carousel of the 10 most similar movies, scored by genres (50 %), shared persons (20 %), tags (15 %), and score proximity (15 %).
+
+Each season page shows an episode grid: **green** cells have a local file, **yellow** cells are known to TMDB but missing locally, **red** cells are absent from TMDB entirely.
 
 **Example:**
 ```bash
@@ -144,8 +158,10 @@ tvthekidx export -d tvthek.db -c "TVthek" -f streamer \
   - `getscreenshots` — capture/backfill screenshots for files (requires `-p`)
   - `clearscreenshots` — delete all stored screenshots
   - `backfillgenres` — fetch genres from TMDB for all movies that don't have them yet (requires `-k`, optional `-l`)
+  - `backfilltvgenres` — fetch genres from TMDB for all TV shows that don't have them yet (requires `-k`)
   - `refreshmovie` — re-fetch metadata for one movie (with `--tmdb-id`) or run a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed movies (without `--tmdb-id`); stores a refresh timestamp per movie; requires `-k`
-  - `resetcounters` — reset cast and genre error counters to zero
+  - `refreshtvshow` — re-fetch metadata for one TV show (with `--tmdb-id`) or run a bulk refresh (without `--tmdb-id`); requires `-k`
+  - `resetcounters` — reset cast, genre, and season error counters to zero for all movies and TV shows
   - `setcollectionregex` — store a custom filename regex for a collection (requires `-c`; at least one of `--movie-regex` or `--tvshow-regex`); regex must use named groups `(?P<name>...)` and `(?P<year>...)` (movie), plus `(?P<season>...)` and `(?P<episode>...)` (tvshow); `(?P<tvstation>...)` is optional in both
 - `-p`, `--path` path to video files (required for `getscreenshots`)
 - `-c`, `--collection` collection name (required for `setcollectionregex`; optional for `getscreenshots`)
