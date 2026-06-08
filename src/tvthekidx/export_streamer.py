@@ -135,6 +135,7 @@ hr { border-color: #252525; margin: 1.5rem 0; }
     word-break: break-word;
 }
 .poster-card:hover .card-label { opacity: 1; }
+.poster-score { position:absolute; top:.35rem; right:.35rem; font-size:.62rem; font-weight:700; padding:1px 5px; border-radius:3px; color:#fff; pointer-events:none; line-height:1.4; opacity:.92; }
 /* In grids the label is always visible below the image */
 .poster-grid .poster-card .card-label,
 .person-movies-row .poster-card .card-label {
@@ -985,13 +986,15 @@ def _sort_buttons_html(default='title'):
 
 # ---------- card HTML helpers (return strings) ----------
 
-def _poster_card_html(href, img_src, label, width=154, height=231, is_placeholder=False, data_attrs=None):
+def _poster_card_html(href, img_src, label, width=154, height=231, is_placeholder=False, data_attrs=None, score=None):
     if is_placeholder:
         img = f'<div class="poster-placeholder" style="width:{width}px;height:{height}px">{_esc(label[:25])}</div>'
     else:
         img = f'<img src="{img_src}" width="{width}" height="{height}" loading="lazy" class="poster-img" alt="{_esc(label)}">'
     da = (' ' + ' '.join(f'data-{k}="{_esc(str(v))}"' for k, v in data_attrs.items())) if data_attrs else ''
-    return f'<div class="poster-card" style="width:{width}px"{da}><a href="{href}">{img}<div class="card-label">{_esc(label)}</div></a></div>'
+    sc_html = (f'<div class="poster-score" style="background:{_score_color(score)}">{score}%</div>'
+               if score else '')
+    return f'<div class="poster-card" style="width:{width}px"{da}><a href="{href}">{img}{sc_html}<div class="card-label">{_esc(label)}</div></a></div>'
 
 
 _JOB_DE = {"Director": "Regie", "Writer": "Buch"}
@@ -1149,7 +1152,8 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
                 f.write(_poster_card_html(f'../{_pshard(sm_oid)}/{sm_oid}.html',
                                           sm_uri,
                                           f"{sm['title']} ({sm['year']})",
-                                          is_placeholder=not sm_uri) + '\n')
+                                          is_placeholder=not sm_uri,
+                                          score=int(sm['score'] or 0)) + '\n')
             f.write('</div>\n')
 
         # similar TV shows
@@ -1161,7 +1165,8 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
                 f.write(_poster_card_html(f'../../shows/{_pshard(s_oid)}/{s_oid}.html',
                                           s_uri,
                                           f"{s['title']} ({s['year']})" if s['year'] else s['title'],
-                                          is_placeholder=not s_uri) + '\n')
+                                          is_placeholder=not s_uri,
+                                          score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
 
         f.write('</div>\n')  # container-fluid
@@ -1322,7 +1327,8 @@ def _write_genre_page(out_path, genre_name, movies, poster_uri_map,
                                           f"{m['title']} ({m['year']})",
                                           width=120, height=180,
                                           is_placeholder=not m_uri,
-                                          data_attrs={'title': m['title'] or '', 'year': m['year'] or 0, 'score': int(m['score'] or 0)}) + '\n')
+                                          data_attrs={'title': m['title'] or '', 'year': m['year'] or 0, 'score': int(m['score'] or 0)},
+                                          score=int(m['score'] or 0)) + '\n')
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
@@ -1337,7 +1343,8 @@ def _write_genre_page(out_path, genre_name, movies, poster_uri_map,
                                           s_uri,
                                           f"{s['title']} ({s['year']})",
                                           width=120, height=180,
-                                          is_placeholder=not s_uri) + '\n')
+                                          is_placeholder=not s_uri,
+                                          score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../')
@@ -1366,7 +1373,8 @@ def _write_year_page(out_path, year, movies, poster_uri_map,
                     f"{m['title']} ({m['year']})",
                     width=120, height=180,
                     is_placeholder=not m_uri,
-                    data_attrs={'title': m['title'] or '', 'year': m['year'] or 0, 'score': int(m['score'] or 0)}) + '\n')
+                    data_attrs={'title': m['title'] or '', 'year': m['year'] or 0, 'score': int(m['score'] or 0)},
+                    score=int(m['score'] or 0)) + '\n')
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
@@ -1381,7 +1389,8 @@ def _write_year_page(out_path, year, movies, poster_uri_map,
                                           s_uri,
                                           f"{s['title']} ({s['year']})",
                                           width=120, height=180,
-                                          is_placeholder=not s_uri) + '\n')
+                                          is_placeholder=not s_uri,
+                                          score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../../')
@@ -1411,7 +1420,8 @@ def _write_tag_page(out_path, tag_name, movies, poster_uri_map, movie_by_id,
                                           f"{m['title']} ({year})" if year else m['title'],
                                           width=120, height=180,
                                           is_placeholder=not m_uri,
-                                          data_attrs={'title': m['title'] or '', 'year': year, 'score': score}) + '\n')
+                                          data_attrs={'title': m['title'] or '', 'year': year, 'score': score},
+                                          score=score) + '\n')
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
@@ -1426,7 +1436,8 @@ def _write_tag_page(out_path, tag_name, movies, poster_uri_map, movie_by_id,
                                           s_uri,
                                           f"{s['title']} ({s['year']})",
                                           width=120, height=180,
-                                          is_placeholder=not s_uri) + '\n')
+                                          is_placeholder=not s_uri,
+                                          score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../')
@@ -1486,7 +1497,8 @@ def _write_tvstation_page(out_path, station_key, movies, poster_uri_map,
                                           f"{m['title']} ({m['year']})",
                                           width=120, height=180,
                                           is_placeholder=not m_uri,
-                                          data_attrs={'title': m['title'] or '', 'year': m['year'] or 0, 'score': int(m['score'] or 0)}) + '\n')
+                                          data_attrs={'title': m['title'] or '', 'year': m['year'] or 0, 'score': int(m['score'] or 0)},
+                                          score=int(m['score'] or 0)) + '\n')
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
@@ -1500,7 +1512,8 @@ def _write_tvstation_page(out_path, station_key, movies, poster_uri_map,
                                           s_uri,
                                           f"{s['title']} ({s['year']})" if s['year'] else s['title'],
                                           width=120, height=180,
-                                          is_placeholder=not s_uri) + '\n')
+                                          is_placeholder=not s_uri,
+                                          score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
         f.write('</div>\n')
         _foot(f, '../')
@@ -1532,7 +1545,8 @@ def _write_list_page(out_path, page_title, movies, poster_uri_map, sortable=Fals
                                           f"{m['title']} ({m['year']})",
                                           width=120, height=180,
                                           is_placeholder=not m_uri,
-                                          data_attrs=da) + '\n')
+                                          data_attrs=da,
+                                          score=int(m['score'] or 0)) + '\n')
             f.write('</div>\n')
         else:
             f.write('<p class="text-muted">Keine Medien gefunden.</p>\n')
@@ -1580,9 +1594,9 @@ def _write_index(out_path, targetpath, title,
             for m in random_movies:
                 m_uri = poster_uri_map.get(m['id'], '')
                 f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
-                                          m_uri,
-                                          f"{m['title']} ({m['year']})",
-                                          is_placeholder=not m_uri) + '\n')
+                                          m_uri, f"{m['title']} ({m['year']})",
+                                          is_placeholder=not m_uri,
+                                          score=int(m['score'] or 0)) + '\n')
             f.write('</div>\n')
 
         # Newest
@@ -1590,20 +1604,19 @@ def _write_index(out_path, targetpath, title,
         for m in newest_movies:
             m_uri = poster_uri_map.get(m['id'], '')
             f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
-                                      m_uri,
-                                      f"{m['title']} ({m['year']})",
-                                      is_placeholder=not m_uri) + '\n')
+                                      m_uri, f"{m['title']} ({m['year']})",
+                                      is_placeholder=not m_uri,
+                                      score=int(m['score'] or 0)) + '\n')
         f.write('</div>\n')
 
         # Top
         f.write('<h2 class="section-title" id="fp-top"><a href="top.html">Top bewertet</a></h2>\n<div class="poster-row">\n')
         for m in top_movies:
             m_uri = poster_uri_map.get(m['id'], '')
-            sc    = int(m['score'] or 0)
             f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
-                                      m_uri,
-                                      f"{m['title']} ({m['year']}) {sc}%",
-                                      is_placeholder=not m_uri) + '\n')
+                                      m_uri, f"{m['title']} ({m['year']})",
+                                      is_placeholder=not m_uri,
+                                      score=int(m['score'] or 0)) + '\n')
         f.write('</div>\n')
 
         # Per-genre carousels
@@ -1618,9 +1631,9 @@ def _write_index(out_path, targetpath, title,
                 for m in genre_newest.get(gid, []):
                     m_uri = poster_uri_map.get(m['id'], '')
                     f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
-                                              m_uri,
-                                              f"{m['title']} ({m['year']})",
-                                              is_placeholder=not m_uri) + '\n')
+                                              m_uri, f"{m['title']} ({m['year']})",
+                                              is_placeholder=not m_uri,
+                                              score=int(m['score'] or 0)) + '\n')
                 f.write('</div>\n')
 
         # TV show carousels (before artists)
@@ -1633,16 +1646,17 @@ def _write_index(out_path, targetpath, title,
                 s_uri = _spuri.get(s['id'], '')
                 f.write(_poster_card_html(f'shows/{_pshard(s["oid"])}/{s["oid"]}.html',
                                           s_uri, f"{s['title']} ({s['year']})",
-                                          is_placeholder=not s_uri) + '\n')
+                                          is_placeholder=not s_uri,
+                                          score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
         if top_shows:
             f.write('<h4 class="fp-genre-sub">Top Serien</h4>\n<div class="poster-row">\n')
             for s in top_shows:
                 s_uri = _spuri.get(s['id'], '')
-                sc    = int(s['score'] or 0)
                 f.write(_poster_card_html(f'shows/{_pshard(s["oid"])}/{s["oid"]}.html',
-                                          s_uri, f"{s['title']} ({s['year']}) {sc}%",
-                                          is_placeholder=not s_uri) + '\n')
+                                          s_uri, f"{s['title']} ({s['year']})",
+                                          is_placeholder=not s_uri,
+                                          score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
 
         # Popular artists
@@ -1844,7 +1858,8 @@ def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_ma
                 s_uri = show_poster_uri_map.get(s['id'], '')
                 f.write(_poster_card_html(
                     f'../../shows/{_pshard(s["oid"])}/{s["oid"]}.html',
-                    s_uri, f"{s['title']} ({s['year']})", is_placeholder=not s_uri) + '\n')
+                    s_uri, f"{s['title']} ({s['year']})", is_placeholder=not s_uri,
+                    score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
 
         # similar movies
@@ -1855,7 +1870,8 @@ def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_ma
                 m_uri = (poster_uri_map or {}).get(m['id'], '')
                 f.write(_poster_card_html(
                     f'../../media/{_pshard(m_oid)}/{m_oid}.html',
-                    m_uri, f"{m['title']} ({m['year']})", is_placeholder=not m_uri) + '\n')
+                    m_uri, f"{m['title']} ({m['year']})", is_placeholder=not m_uri,
+                    score=int(m['score'] or 0)) + '\n')
             f.write('</div>\n')
 
         f.write('</div>\n')
