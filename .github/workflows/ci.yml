@@ -22,7 +22,7 @@ jobs:
         run: pylint --errors-only --disable import-error src/tvthekidx/*.py
 
       - name: Lint — flake8
-        run: flake8 src/tvthekidx/*.py --ignore=E501,E722 --statistics --count
+        run: flake8 src/tvthekidx/*.py --ignore=E501,E722,W503,W504 --statistics --count
 
   test:
     name: Test (trixie)

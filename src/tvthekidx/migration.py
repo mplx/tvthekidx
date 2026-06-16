@@ -368,8 +368,8 @@ def upgrade_db(db_file):
         cursor.close()
 
         execute_sql(conn,
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tvshows_tmdb_id ON tvshows(tmdb_id) WHERE tmdb_id IS NOT NULL",
-            None, True)
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_tvshows_tmdb_id ON tvshows(tmdb_id) WHERE tmdb_id IS NOT NULL",
+                    None, True)
 
         execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
 
@@ -388,9 +388,9 @@ def upgrade_db(db_file):
         verbose("Upgrading database to version " + str(DBVERSION), 2)
         # Backfill tvshow_id for files that had episode_id set before v13 added the column
         execute_sql(conn,
-            "UPDATE files SET tvshow_id = (SELECT e.tvshow_id FROM episodes e WHERE e.id = files.episode_id) "
-            "WHERE episode_id IS NOT NULL AND tvshow_id IS NULL",
-            None, True)
+                    "UPDATE files SET tvshow_id = (SELECT e.tvshow_id FROM episodes e WHERE e.id = files.episode_id) "
+                    "WHERE episode_id IS NOT NULL AND tvshow_id IS NULL",
+                    None, True)
         execute_sql(conn, f"UPDATE settings SET value_int = {DBVERSION} WHERE dbkey = 'dbversion'", None, True)
 
     if DBVERSION == 14:

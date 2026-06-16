@@ -670,23 +670,23 @@ def writeTVShowsDetail(db, f, collection):
         return
 
     show_ids = [s['id'] for s in tv_shows]
-    tv_seasons_map         = database.getTVSeasons_bulk(db, show_ids)
-    tv_episodes_map        = database.getEpisodes_bulk(db, show_ids)
-    tv_episode_files_map   = database.getEpisodeFiles_bulk(db, show_ids)
+    tv_seasons_map = database.getTVSeasons_bulk(db, show_ids)
+    tv_episodes_map = database.getEpisodes_bulk(db, show_ids)
+    tv_episode_files_map = database.getEpisodeFiles_bulk(db, show_ids)
     tv_unmatched_files_map = database.getUnmatchedEpisodeFiles_bulk(db, show_ids)
 
     f.write('<h3 id="tvshows">Serien</h3>\n<section id="tvshowssection">\n')
     for s in tv_shows:
-        sid   = s['id']
+        sid = s['id']
         title = s['title']
-        year  = s['year']
+        year = s['year']
         score = int(s['score'] or 0)
         scorecolor = movieRatingColor(score)
-        desc  = (s['description'] or '')[:400]
+        desc = (s['description'] or '')[:400]
         tmdbid = s['tmdb_id']
         tmdb_link = f'<a href="https://www.themoviedb.org/tv/{tmdbid}" target="_blank">{title}</a>' if tmdbid else title
 
-        f.write(f'<div class="row p-3" style="border-top:1px solid #333">\n')
+        f.write('<div class="row p-3" style="border-top:1px solid #333">\n')
         f.write(f'<div class="col-12"><h4>{tmdb_link} ({year})'
                 f' <span class="badge bg-{scorecolor}">{score}%</span></h4>')
         if desc:
@@ -708,7 +708,6 @@ def writeTVShowsDetail(db, f, collection):
         # season rows
         seasons = sorted(tv_seasons_map.get(sid, []), key=lambda x: x['season_number'])
         all_unmatched_seasons = set(unmatched_by_season.keys())
-        shown_seasons = {season['season_number'] for season in seasons}
 
         for season in seasons:
             sn = season['season_number']
@@ -728,7 +727,7 @@ def writeTVShowsDetail(db, f, collection):
             badge = f'{local_count}/{len(season_eps)} Folgen'
             if unmatched_count:
                 badge += f' + {unmatched_count} nicht in TMDB'
-            f.write(f'<div class="col-12 ps-4 mb-2">\n')
+            f.write('<div class="col-12 ps-4 mb-2">\n')
             f.write(f'<strong>S{sn:02d} – {s_label}</strong>'
                     f' <span class="badge bg-secondary">{badge}</span>\n')
             if max_tmdb_ep or unmatched_eps:
@@ -765,7 +764,7 @@ def writeTVShowsDetail(db, f, collection):
         for sn in sorted(all_unmatched_seasons):
             unmatched_eps = unmatched_by_season[sn]
             max_ep = max(unmatched_eps.keys())
-            f.write(f'<div class="col-12 ps-4 mb-2">\n')
+            f.write('<div class="col-12 ps-4 mb-2">\n')
             f.write(f'<strong>S{sn:02d}</strong>'
                     f' <span class="badge bg-secondary">{len(unmatched_eps)} nicht in TMDB</span>\n')
             f.write('<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">\n')

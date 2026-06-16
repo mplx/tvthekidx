@@ -55,8 +55,8 @@ def execute_sql(conn, sql, param=None, doCommit=False):
 def cleanup_orphan_tvshows(db):
     """Remove tvshow rows (+ seasons, episodes, cast, crew, genres, poster) that have no files."""
     cur = execute_sql(db,
-        "SELECT id FROM tvshows WHERE id NOT IN "
-        "(SELECT DISTINCT tvshow_id FROM files WHERE tvshow_id IS NOT NULL)")
+                      "SELECT id FROM tvshows WHERE id NOT IN "
+                      "(SELECT DISTINCT tvshow_id FROM files WHERE tvshow_id IS NOT NULL)")
     orphan_ids = [row['id'] for row in cur.fetchall()]
     if not orphan_ids:
         return 0
@@ -832,9 +832,9 @@ def addTVShowToDb(db, show):
     key = str(show['tmdb_id']) if show['tmdb_id'] else f"{show['title']}:{show['year']}"
     oid = generate_oid("tvshow", key)
     result = execute_sql(db,
-        "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (show['tmdb_id'], show['title'], show['orig_title'], normalize_string(show['title']),
-         show['year'], show.get('description'), show.get('popularity', 0), show.get('score', 0), oid))
+                         "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         (show['tmdb_id'], show['title'], show['orig_title'], normalize_string(show['title']),
+                          show['year'], show.get('description'), show.get('popularity', 0), show.get('score', 0), oid))
     show_id = result.lastrowid
     if show.get('poster'):
         add_tvshow_attachment(db, show_id, 'tvshow_poster', show['poster'])
@@ -844,8 +844,8 @@ def addTVShowToDb(db, show):
 def addSeasonToDb(db, tvshow_id, tvshow_tmdb_id, season_number, title, year):
     oid = generate_oid("season", f"{tvshow_tmdb_id}:{season_number}")
     execute_sql(db,
-        "INSERT OR IGNORE INTO seasons(tvshow_id, season_number, title, year, oid) VALUES (?, ?, ?, ?, ?)",
-        (tvshow_id, season_number, title, year, oid))
+                "INSERT OR IGNORE INTO seasons(tvshow_id, season_number, title, year, oid) VALUES (?, ?, ?, ?, ?)",
+                (tvshow_id, season_number, title, year, oid))
     cur = execute_sql(db, "SELECT id FROM seasons WHERE tvshow_id = ? AND season_number = ?", (tvshow_id, season_number))
     return cur.fetchone()['id']
 
@@ -853,10 +853,10 @@ def addSeasonToDb(db, tvshow_id, tvshow_tmdb_id, season_number, title, year):
 def addEpisodeToDb(db, episode):
     oid = generate_oid("episode", f"{episode['tvshow_tmdb_id']}:{episode['season_number']}:{episode['episode_number']}")
     execute_sql(db,
-        "INSERT OR IGNORE INTO episodes(tvshow_id, season_id, season_number, episode_number, title, year, description, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (episode['tvshow_id'], episode['season_id'], episode['season_number'],
-         episode['episode_number'], episode.get('title'), episode.get('year'),
-         episode.get('description'), episode.get('score', 0), oid))
+                "INSERT OR IGNORE INTO episodes(tvshow_id, season_id, season_number, episode_number, title, year, description, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (episode['tvshow_id'], episode['season_id'], episode['season_number'],
+                 episode['episode_number'], episode.get('title'), episode.get('year'),
+                 episode.get('description'), episode.get('score', 0), oid))
     cur = execute_sql(db, "SELECT id FROM episodes WHERE tvshow_id = ? AND season_number = ? AND episode_number = ?",
                       (episode['tvshow_id'], episode['season_number'], episode['episode_number']))
     return cur.fetchone()['id']
@@ -916,10 +916,10 @@ def lookupTVShow(db, search, tv, title, year, episode_tag=None):
             if details:
                 new_oid = generate_oid("tvshow", str(tmdb_id))
                 execute_sql(db,
-                    "UPDATE tvshows SET tmdb_id=?, title_orig=?, title_normalized=?, description=?, popularity=?, score=?, oid=? WHERE id=?",
-                    (tmdb_id, details.get('original_name', title), normalize_string(title),
-                     details.get('overview') or None, details.get('popularity', 0),
-                     float(details.get('vote_average') or 0) * 10, new_oid, show_id), True)
+                            "UPDATE tvshows SET tmdb_id=?, title_orig=?, title_normalized=?, description=?, popularity=?, score=?, oid=? WHERE id=?",
+                            (tmdb_id, details.get('original_name', title), normalize_string(title),
+                             details.get('overview') or None, details.get('popularity', 0),
+                             float(details.get('vote_average') or 0) * 10, new_oid, show_id), True)
                 poster = online.fetchPoster(details.get('poster_path'))
                 if poster:
                     add_tvshow_attachment(db, show_id, 'tvshow_poster', poster)
@@ -992,10 +992,10 @@ def addCrewToTVShowDb(db, show_id, actor_id, job):
 
 def assignEpisodeToFile(db, fid, eid):
     execute_sql(db,
-        "UPDATE files SET episode_id = ?, "
-        "tvshow_id = (SELECT tvshow_id FROM episodes WHERE id = ?) "
-        "WHERE id = ?",
-        (eid, eid, fid), True)
+                "UPDATE files SET episode_id = ?, "
+                "tvshow_id = (SELECT tvshow_id FROM episodes WHERE id = ?) "
+                "WHERE id = ?",
+                (eid, eid, fid), True)
 
 
 def add_tvshow_attachment(db, tvshow_id, att_type, data):
@@ -1199,8 +1199,8 @@ def scanTVShows(db, search, tv):
             station = None
         if station:
             execute_sql(db,
-                "UPDATE files SET tvstation = ? WHERE id = ? AND tvstation IS NULL",
-                (station.lower(), row['id']), True)
+                        "UPDATE files SET tvstation = ? WHERE id = ? AND tvstation IS NULL",
+                        (station.lower(), row['id']), True)
         try:
             if name in show_id_cache:
                 show_id = show_id_cache[name]
@@ -1211,8 +1211,8 @@ def scanTVShows(db, search, tv):
             execute_sql(db, "UPDATE files SET tvshow_id = ? WHERE id = ?", (show_id, row['id']), True)
 
             ep_cur = execute_sql(db,
-                "SELECT id FROM episodes WHERE tvshow_id = ? AND season_number = ? AND episode_number = ?",
-                (show_id, season_number, episode_number))
+                                 "SELECT id FROM episodes WHERE tvshow_id = ? AND season_number = ? AND episode_number = ?",
+                                 (show_id, season_number, episode_number))
             ep_entry = ep_cur.fetchone()
             if ep_entry is None:
                 # Episode missing — season may never have been fetched (partial failure or first run).
@@ -1223,8 +1223,8 @@ def scanTVShows(db, search, tv):
                     season_fetch_attempted.add(season_key)
                     tmdb_id = show_row['tmdb_id']
                     season_row = execute_sql(db,
-                        "SELECT id FROM seasons WHERE tvshow_id = ? AND season_number = ?",
-                        (show_id, season_number)).fetchone()
+                                             "SELECT id FROM seasons WHERE tvshow_id = ? AND season_number = ?",
+                                             (show_id, season_number)).fetchone()
                     season_id = season_row['id'] if season_row else addSeasonToDb(db, show_id, tmdb_id, season_number, None, None)
                     verbose(f"Fetching season {season_number} for {name}", 2)
                     try:
@@ -1246,15 +1246,15 @@ def scanTVShows(db, search, tv):
                         })
                     db.commit()
                     ep_cur = execute_sql(db,
-                        "SELECT id FROM episodes WHERE tvshow_id = ? AND season_number = ? AND episode_number = ?",
-                        (show_id, season_number, episode_number))
+                                         "SELECT id FROM episodes WHERE tvshow_id = ? AND season_number = ? AND episode_number = ?",
+                                         (show_id, season_number, episode_number))
                     ep_entry = ep_cur.fetchone()
             if ep_entry:
                 assignEpisodeToFile(db, row['id'], ep_entry['id'])
             else:
                 season_ep_count = execute_sql(db,
-                    "SELECT COUNT(*) FROM episodes WHERE tvshow_id = ? AND season_number = ?",
-                    (show_id, season_number)).fetchone()[0]
+                                              "SELECT COUNT(*) FROM episodes WHERE tvshow_id = ? AND season_number = ?",
+                                              (show_id, season_number)).fetchone()[0]
                 if season_ep_count > 0:
                     execute_sql(db, "UPDATE files SET scan_error_count = scan_error_count + 1 WHERE id = ?", (row['id'],), True)
                     verbose(f"S{season_number:02d}E{episode_number:02d} not on TMDB (season has {season_ep_count} episodes): {row['filename']}", 1)
@@ -1341,10 +1341,10 @@ def refresh_tvshow(db, tv_api, tmdbid):
     first_air = details.get('first_air_date') or ''
     year = int(first_air[:4]) if len(first_air) >= 4 else None
     execute_sql(db,
-        "UPDATE tvshows SET title=?, title_orig=?, title_normalized=?, year=?, description=?, popularity=?, score=? WHERE id=?",
-        (details.get('name'), details.get('original_name'), normalize_string(details.get('name', '')),
-         year, details.get('overview') or None,
-         details.get('popularity', 0), float(details.get('vote_average') or 0) * 10, show_id))
+                "UPDATE tvshows SET title=?, title_orig=?, title_normalized=?, year=?, description=?, popularity=?, score=? WHERE id=?",
+                (details.get('name'), details.get('original_name'), normalize_string(details.get('name', '')),
+                 year, details.get('overview') or None,
+                 details.get('popularity', 0), float(details.get('vote_average') or 0) * 10, show_id))
 
     poster_path = details.get('poster_path')
     if poster_path:
