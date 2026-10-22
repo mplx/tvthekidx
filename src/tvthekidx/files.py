@@ -12,22 +12,24 @@ import os
 import io
 import re
 import glob
+import json
+import subprocess
 
-import ffmpeg
-from moviepy import VideoFileClip
 from PIL import Image
 
+# ffprobe/ffmpeg are run directly with a timeout and stderr discarded. moviepy and
+# ffmpeg-python leave stderr on an undrained pipe and wait without a timeout, so a
+# damaged file that makes ffmpeg log a lot (or an unreadable network file) hangs the
+# scan forever.
+_FFPROBE_TIMEOUT = 60
+_FFMPEG_TIMEOUT = 120
 
-def _close_clip(clip):
-    try:
-        clip.reader.close()
-    except Exception:
-        pass
-    try:
-        if clip.audio:
-            clip.audio.reader.close_proc()
-    except Exception:
-        pass
+
+def probe_video(path):
+    cmd = ["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", path]
+    out = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                         timeout=_FFPROBE_TIMEOUT, check=True).stdout
+    return json.loads(out)
 
 
 def store_screenshot(db, collection_id, m, filename, relpath):
@@ -35,9 +37,7 @@ def store_screenshot(db, collection_id, m, filename, relpath):
     if file_id is None:
         return False
     try:
-        clip = VideoFileClip(m)
-        length = clip.duration
-        _close_clip(clip)
+        length = float(probe_video(m)["format"]["duration"])
     except Exception as e:
         verbose(f"store_screenshot open failed for {filename}: {e}", 2)
         return False
@@ -55,14 +55,14 @@ def store_screenshot(db, collection_id, m, filename, relpath):
 
 
 def get_screenshot(video_path, time):
-    clip = VideoFileClip(video_path)
-    length = clip.duration
-    if time > length:
-        time = int(length / 2)
-    screenshot = clip.get_frame(time)
-    _close_clip(clip)
+    cmd = ["ffmpeg", "-nostdin", "-v", "error", "-ss", f"{time:.3f}", "-i", video_path,
+           "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"]
+    frame = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                           timeout=_FFMPEG_TIMEOUT, check=True).stdout
+    if not frame:
+        raise ValueError(f"no frame decoded at {time:.1f}s")
 
-    image = Image.fromarray(screenshot)
+    image = Image.open(io.BytesIO(frame)).convert("RGB")
     image.thumbnail((600, 600))
 
     img_byte_array = io.BytesIO()
@@ -119,11 +119,11 @@ def scanDir(db, collection_name, rootDir, recursiveSearch=False, libType="movies
         if ((entry is True) or (size != entry["size"]) or (entry["duration"] is None)):
             verbose(f"Updating meta data for {f}", 2)
             try:
-                probe = ffmpeg.probe(fpath)
+                probe = probe_video(fpath)
                 video_streams = [stream for stream in probe["streams"] if stream["codec_type"] == "video"]
                 width = video_streams[0]['width']
                 height = video_streams[0]['height']
-                duration = float(video_streams[0]['duration'])
+                duration = float(video_streams[0].get('duration') or probe['format']['duration'])  # MKV: no per-stream duration
                 codec = video_streams[0]['codec_name']
                 result = updateFileMeta(db, f, {"collection_id": collection_id, "size": size, "ctime": ctime, "mtime": mtime, "width": width, "height": height, "duration": duration, "codec": codec, 'screenshot': None})
                 forceScreenshot = True

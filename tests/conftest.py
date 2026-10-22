@@ -14,7 +14,7 @@ if not os.path.exists(_ver):
         _f.write('__version__ = "0.0.0.dev"\n')
 
 # Mock heavy / optional dependencies not needed for unit tests.
-for _mod in ("tmdbv3api", "ffmpeg", "moviepy", "moviepy.editor"):
+for _mod in ("tmdbv3api",):
     if _mod not in sys.modules:
         try:
             __import__(_mod)
