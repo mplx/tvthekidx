@@ -1,38 +1,51 @@
 # Changelog
 
-## [unreleased]
+## [0.6.0] - 2026-10-22
+
+### Upgrade notes
+- **Back up your database before upgrading.** The schema goes from v8 (0.5.0) to v15, applied automatically by the first command that opens the database
+- `ffmpeg` and `ffprobe` must be installed and on the `PATH`; `moviepy` and `ffmpeg-python` are no longer dependencies
 
 ### Added
-- **TV show support** — index TV show libraries with `-t tvshows`; TMDB TV API used for show/season/episode metadata; full season fetch on first encounter enables missing-episode detection
+- **TV show support** - index TV show libraries with `-t tvshows`; TMDB TV API used for show/season/episode metadata; full season fetch on first encounter enables missing-episode detection
 - New database tables: `tvshows`, `seasons`, `episodes`, `actors_tvshows`, `crew_tvshows`, `tvshows_genres`; `files.episode_id` FK links files to episodes
-- `refreshtvshow` maintenance action — with `--tmdb-id` re-fetches one TV show; without it runs a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed
-- `backfilltvgenres` maintenance action — fetches genres for existing TV shows that have none (requires `--key`)
-- `resetcounters` now also resets `season_error_count` on TV shows
-- **Streamer exporter** — show pages (hero + cast + seasons overview), season pages (episode grid with green/yellow/red cells for present/absent/unknown episodes), "Neue Serien" and "Top Serien" carousels on index, TV show credits on person pages, TV show entries in search index
-- **HTML exporter** — TV shows section with per-season episode presence squares (green = local file present, yellow = in TMDB but missing locally, red = not in TMDB)
-- Genre support — genres fetched from TMDB and stored in `genres` / `movies_genres` tables; displayed as badges in HTML export
-- `backfillgenres` maintenance action — fetches genres for existing movies that have none (requires `--key`, optional `--limit`)
-- `refreshmovie` maintenance action — with `--tmdb-id` re-fetches one movie; without it runs a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed; stores a `refresh_timestamp` per movie
-- `resetcounters` maintenance action — resets cast and genre error counters to zero for all movies
-- Error counters (`cast_error_count`, `genre_error_count`) on movies — movies that return no results from TMDB are skipped after 3 consecutive failures per category
-- **Streamer export plugin** (`--format streamer`) — multi-file, streaming-service-style export {coded by Anthropic's Sonnet 4.6}
-- GitHub Release automation — pushing a version tag creates a release with auto-generated notes, Linux binary, and source distribution
-- **Per-collection filename regex** — `collections` table stores optional `movie_filename_regex` and `tvshow_filename_regex` per collection; when NULL the built-in defaults are used. Default movie pattern: `(?P<name>.*) \((?P<year>[0-9]{4})\)(?:.*?\{(?P<tvstation>[^}]+)\})?.*\..+`. Default TV show pattern adds `[Ss](?P<season>...)[Ee](?P<episode>...)` and an optional `{tvstation}` tag. Named groups (`name`, `year`, `tvstation`, `season`, `episode`) replace the previous positional-index extraction.
-- `setcollectionregex` maintenance action — stores custom `--movie-regex` and/or `--tvshow-regex` for a collection (both must use required named groups; `tvstation` is optional); creates the collection if it does not exist yet
-- TV station auto-detection from filename — when the movie filename regex captures a `tvstation` named group (e.g. `{ARD}` suffix) that value is written to `files.tvstation` during `scanMovies` if not already set by the ML detector
-- File discovery via regex — `scanDir` now enumerates files by extension only and applies the collection's movie regex as the filter, replacing the year-anchored glob pre-filter; the regex is the single source of truth for both discovery and title/year extraction
+- **Streamer export plugin** (`--format streamer`) - multi-file, streaming-service-style export {coded by Anthropic's Sonnet 4.6}
+- **Streamer exporter** - show pages (hero + cast + seasons overview), season pages (episode list with green/yellow/orange/red markers for present/missing/unknown-to-TMDB/gap episodes), "Neue Serien" and "Top Serien" carousels on index, TV show credits on person pages, TV show entries in search index
+- **HTML exporter** - TV shows section with per-season episode presence squares (green = local file present, yellow = in TMDB but missing locally, red = not in TMDB)
+- Genre support - genres fetched from TMDB and stored in `genres` / `movies_genres` tables; displayed as badges in HTML export
+- `backfillgenres` maintenance action - fetches genres for existing movies that have none (requires `--key`, optional `--limit`)
+- `backfilltvgenres` maintenance action - fetches genres for existing TV shows that have none (requires `--key`)
+- `refreshmovie` maintenance action - with `--tmdb-id` re-fetches one movie; without it runs a bulk refresh of top-10 by score + 10 random + 10 oldest-refreshed; stores a `refresh_timestamp` per movie
+- `refreshtvshow` maintenance action - the same for TV shows
+- `resetcounters` maintenance action - resets cast, genre and season error counters to zero for all movies and TV shows
+- Error counters (`cast_error_count`, `genre_error_count`) on movies - movies that return no results from TMDB are skipped after 3 consecutive failures per category
+- **Per-collection filename regex** - `collections` table stores optional `movie_filename_regex` and `tvshow_filename_regex` per collection; when NULL the built-in defaults are used. Default movie pattern: `(?P<name>.*) \((?P<year>[0-9]{4})\)(?:.*?\{(?P<tvstation>[^}]+)\})?.*\..+`. Default TV show pattern adds `[Ss](?P<season>...)[Ee](?P<episode>...)` and an optional `{tvstation}` tag. Named groups (`name`, `year`, `tvstation`, `season`, `episode`) replace the previous positional-index extraction.
+- `setcollectionregex` maintenance action - stores custom `--movie-regex` and/or `--tvshow-regex` for a collection (both must use required named groups; `tvstation` is optional); creates the collection if it does not exist yet
+- TV station auto-detection from filename - when the movie filename regex captures a `tvstation` named group (e.g. `{ARD}` suffix) that value is written to `files.tvstation` during `scanMovies` if not already set by the ML detector
+- File discovery via regex - `scanDir` now enumerates files by extension only and applies the collection's movie regex as the filter, replacing the year-anchored glob pre-filter; the regex is the single source of truth for both discovery and title/year extraction
+- Python 3.15 support
+- GitHub Release automation - pushing a version tag creates a release with auto-generated notes, Linux binary, and source distribution
 
 ### Changed
-- Schema migrations are atomic and fail loudly: each version step runs in one transaction with its version bump, and an error rolls the step back and stops with a message naming the step, instead of being printed and skipped (which could leave a database claiming a version whose schema it lacked)
-- Duplicate movie rows (same TMDB id indexed under two file names) are merged during the upgrade, so the unique id index can be created; previously the index was silently missing and both movies shared one exported page
-- **Database schema v15**: the stable-ID column `oid` is renamed to `guid` in all tables. `oid` is SQLite's built-in alias for `rowid`; SQLite 3.54 refuses to add, rename or drop a column of that name, so databases created with SQLite ≥ 3.54 lacked the column and failed on the first insert (`datatype mismatch`), and upgrading databases older than v6 crashed. Existing databases are migrated automatically (tables are rebuilt; exported page URLs stay the same); databases created broken are repaired
+- **Database schema v15** (0.5.0: v8)
+  - v10: `collections` table introduced; `files.collection` TEXT column migrated to `files.collection_id` INTEGER FK; unique index rebuilt on `(collection_id, filename, relpath)`
+  - v11: TV show tables added; `files.episode_id` column added
+  - v15: the stable id column `oid` is renamed to `guid` in all tables (see Fixed); tables are rebuilt, existing values and exported page URLs stay the same
+- Schema migrations are atomic and fail loudly: each version step runs in one transaction with its version bump, and an error rolls the step back and stops with a message naming the step, instead of being printed and skipped
 - `export` and maintenance actions upgrade the database schema before running, like `index` already did
-- Screenshots and video probing call `ffmpeg`/`ffprobe` directly; `moviepy` and `ffmpeg-python` dependencies removed, `pillow` no longer capped below 12
-- TMDB requests and poster downloads time out after 30 s instead of blocking forever on a stalled connection
-- Bulk database queries are split into chunks, fixing "too many SQL variables" on large libraries
-- MKV files now get their duration from the container (MKV video streams carry none), so they are no longer re-probed on every scan
-- Database schema v11 — `tvshows`, `seasons`, `episodes`, `actors_tvshows`, `crew_tvshows`, `tvshows_genres` tables added; `files.episode_id` column added
-- Database schema v10 — `collections` table introduced; `files.collection` TEXT column migrated to `files.collection_id` INTEGER FK; unique index rebuilt on `(collection_id, filename, relpath)`
+- Screenshots and video probing call `ffmpeg`/`ffprobe` directly, with a timeout; `moviepy` and `ffmpeg-python` dependencies removed, `pillow` no longer capped below 12 (smaller install and binary: no numpy, imageio or bundled ffmpeg)
+- Verbose output is flushed line by line, so it shows up immediately when tvthekidx runs under another program or is piped to a file
+- CI tests on Python 3.15; release builds on Python 3.13; the release workflow installs dependencies from `pyproject.toml`
+
+### Fixed
+- Indexer could hang forever on a damaged video file: moviepy left ffmpeg's error output on an unread pipe, and both processes waited on each other
+- Indexer could hang forever on a stalled TMDB connection; TMDB requests and poster downloads now time out after 30 s
+- New databases created with SQLite 3.54 or newer were broken (first insert failed with `datatype mismatch`), and upgrading databases older than schema v6 crashed: `oid` is SQLite's built-in alias for `rowid`, and SQLite 3.54 refuses to add, rename or drop a column of that name. Databases created broken are repaired by the upgrade
+- Duplicate movie rows (same TMDB id indexed under two file names) are merged during the upgrade; before, the unique id index was silently missing and both movies shared one exported page
+- "too many SQL variables" in exports of large libraries (thousands of actors); bulk queries are split into chunks
+- MKV files got no duration (MKV video streams carry none) and were re-probed and re-screenshotted on every scan
+- CI failed on Python 3.15 (Pillow < 12 has no wheel and could not be built)
+- Release workflow referenced non-existent `requirements*.txt` files, and the PyInstaller spec still bundled `imageio` metadata
 
 ---
 

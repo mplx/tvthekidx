@@ -252,9 +252,9 @@ def main():
     maintenanceparser.add_argument("--action", "-a", action="store", dest="action", default=None, help="createdb/compressdb/upgradedb/detecttvstations/cleartvstations/clearscreenshots/getscreenshots/backfillgenres/backfilltvgenres/refreshmovie/refreshtvshow/resetcounters/setcollectionregex")
     maintenanceparser.add_argument("--path", "-p", action="store", dest="libPath", default=None, help="path to video files (required for getscreenshots)")
     maintenanceparser.add_argument("--collection", "-c", action="store", dest="collection", default=None, help="collection filter (optional for getscreenshots)")
-    maintenanceparser.add_argument("--key", "-k", action="store", dest="tmdbApiKey", default=None, help="TMDB API key (required for refreshmovie/backfillgenres)")
-    maintenanceparser.add_argument("--tmdb-id", action="store", dest="tmdbId", type=int, default=None, help="TMDB movie ID (optional for refreshmovie; omit to refresh top/random/oldest batch)")
-    maintenanceparser.add_argument("--limit", "-l", action="store", dest="limit", type=int, default=None, help="max movies to process per run (for backfillgenres)")
+    maintenanceparser.add_argument("--key", "-k", action="store", dest="tmdbApiKey", default=None, help="TMDB API key (required for refreshmovie/refreshtvshow/backfillgenres/backfilltvgenres)")
+    maintenanceparser.add_argument("--tmdb-id", action="store", dest="tmdbId", type=int, default=None, help="TMDB movie or TV show ID (optional for refreshmovie/refreshtvshow; omit to refresh top/random/oldest batch)")
+    maintenanceparser.add_argument("--limit", "-l", action="store", dest="limit", type=int, default=None, help="max movies/TV shows to process per run (for backfillgenres/backfilltvgenres)")
     maintenanceparser.add_argument("--movie-regex", action="store", dest="movieRegex", default=None, help="movie filename regex with named groups (?P<name>, ?P<year>); for setcollectionregex")
     maintenanceparser.add_argument("--tvshow-regex", action="store", dest="tvshowRegex", default=None, help="tvshow filename regex with named groups (?P<name>, ?P<year>, ?P<season>, ?P<episode>); for setcollectionregex")
 
