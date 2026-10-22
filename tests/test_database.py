@@ -62,10 +62,10 @@ class TestInitializeDb:
             )
             assert cur.fetchone() is not None, f"Missing table: {table}"
 
-    def test_schema_version_is_14(self, db):
+    def test_schema_version_is_15(self, db):
         cur = db.cursor()
         cur.execute("SELECT value_int FROM settings WHERE dbkey='dbversion'")
-        assert cur.fetchone()[0] == 14
+        assert cur.fetchone()[0] == 15
 
     def test_existing_db_reopens(self, tmp_path):
         path = str(tmp_path / "existing.db")
@@ -95,7 +95,7 @@ class TestMovies:
 
     def test_oid_assigned(self, db):
         mid = addMovieToDb(db, _MOVIE)
-        row = db.execute("SELECT oid FROM movies WHERE id=?", (mid,)).fetchone()
+        row = db.execute("SELECT guid FROM movies WHERE id=?", (mid,)).fetchone()
         assert row[0] is not None
 
     def test_poster_stored_as_attachment(self, db):
@@ -256,9 +256,9 @@ class TestBulkChunking:
         db = sqlite3.connect(str(tmp_path / "bulk.db"))
         db.row_factory = sqlite3.Row
         db.executescript("""
-            CREATE TABLE movies (id INTEGER PRIMARY KEY, oid TEXT, title TEXT,
+            CREATE TABLE movies (id INTEGER PRIMARY KEY, guid TEXT, title TEXT,
                                  title_normalized TEXT, score REAL, year INTEGER);
-            CREATE TABLE tvshows (id INTEGER PRIMARY KEY, oid TEXT, title TEXT,
+            CREATE TABLE tvshows (id INTEGER PRIMARY KEY, guid TEXT, title TEXT,
                                   title_normalized TEXT, score REAL, year INTEGER);
             CREATE TABLE actors (id INTEGER PRIMARY KEY, name TEXT, popularity REAL);
             CREATE TABLE actors_movies (a_id INTEGER, m_id INTEGER);

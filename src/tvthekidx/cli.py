@@ -52,6 +52,7 @@ def exporter(args, remaining):
 
     col_display = ', '.join(collection) if collection else 'all'
     verbose(f"Exporting collection '{col_display}' using format '{args.format}'")
+    migration.upgrade_db(args.dbfile)  # exporters query the current schema (e.g. guid, v15)
     db = database.create_connection(args.dbfile)
     plugin = export.load_exporter(args.format)
     plugin_args = plugin.parse_args(remaining)
@@ -70,6 +71,7 @@ def maintenance(args, remaining=None):
     if not os.path.isfile(args.dbfile):
         print(f"ERROR: database '{args.dbfile}' not found")
         sys.exit(2)
+    migration.upgrade_db(args.dbfile)  # maintenance actions query the current schema
     db = database.create_connection(args.dbfile)
 
     if args.action == "compressdb":

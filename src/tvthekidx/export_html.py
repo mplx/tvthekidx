@@ -314,7 +314,7 @@ def writeMoviesImageTitle(db, f, collection, gfxmode):
     poster_map = database.get_movie_attachments_bulk(db, [m['id'] for m in movies], 'poster')
     f.write('<section id="new1">\n')
     for m in movies:
-        oid = m['oid']
+        oid = m['guid']
         title = m['title']
         year = m['year']
         score = int(m['score'])
@@ -339,7 +339,7 @@ def writeMoviesImageTitle(db, f, collection, gfxmode):
     poster_map = database.get_movie_attachments_bulk(db, [m['id'] for m in movies], 'poster')
     f.write('<section id="top1">\n')
     for m in movies:
-        oid = m['oid']
+        oid = m['guid']
         title = m['title']
         year = m['year']
         score = int(m['score'])
@@ -406,7 +406,7 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
             if first_char.isalpha():
                 key = first_char.lower()
                 if key not in anchor_map:
-                    anchor_map[key] = m['oid']
+                    anchor_map[key] = m['guid']
         description = m['description'] if m['description'] else ""
         if len(description) > 800:
             description = description[0:800] + "[...]"
@@ -435,9 +435,9 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
             titleext = f" <span class='origtitle'>({title_orig})</span>"
         actors = directors = ""
         for person in cast_map.get(id, []):
-            actors = actors + '<a href="#' + str(person['oid']) + '" title="' + str(int(person['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + person['name'] + '</a> '
+            actors = actors + '<a href="#' + str(person['guid']) + '" title="' + str(int(person['popularity'])) + ' Pkt." style="text-decoration:none" class="badge bg-info">' + person['name'] + '</a> '
         for person in crew_map.get(id, []):
-            directors = directors + '<a href="#' + str(person['oid']) + '" title="Regie" style="text-decoration:none" class="badge bg-secondary">' + person['name'] + '</a> '
+            directors = directors + '<a href="#' + str(person['guid']) + '" title="Regie" style="text-decoration:none" class="badge bg-secondary">' + person['name'] + '</a> '
         collectionstr = combinedstr = metadatastr = ""
         for col in collections:
             if col['collection'] is not None:
@@ -515,7 +515,7 @@ def writeMoviesDetail(db, f, collection, gfxmode, urlPrefix):
                 <div class="row row-striped p-3" data-search='[{title_escaped}]'>
                     <div class="col-2">{posterhtml}</div>
                     <div class="col-10">
-                        <h3 id="{m['oid']}">{tvstation_logo_html}{titlecombined}</h3>
+                        <h3 id="{m['guid']}">{tvstation_logo_html}{titlecombined}</h3>
                         <div class="description">
                             {datastringhtml}{descriptionhtml}
                             <p>{combinedstr}</p>
@@ -594,7 +594,7 @@ def writeActorsDetail(db, f, collection, gfxmode):
             i = i + 1
             f.write(f"""
                     <div class="row row-striped p-3" data-search='["{name}"]'>
-                        <div class="col"><h4 id="{a['oid']}">{name}</h4></div>
+                        <div class="col"><h4 id="{a['guid']}">{name}</h4></div>
                         <div class="col">{profilehtml}</div>
                         <div class="col">{popularityhtml}</div>
                         <div class="col-6"><div class="description">""")
@@ -603,7 +603,7 @@ def writeActorsDetail(db, f, collection, gfxmode):
                 year = m['year']
                 score = int(m['score'])
                 scorecolor = movieRatingColor(m['score'])
-                f.write(f'<a href="#{m["oid"]}" style="text-decoration:none" title="{year} / {score}%" class="badge bg-{scorecolor}">{title}</a> ')
+                f.write(f'<a href="#{m["guid"]}" style="text-decoration:none" title="{year} / {score}%" class="badge bg-{scorecolor}">{title}</a> ')
             f.write("</div></div></div>")
     f.write(f"{i}/{total} Personen gelisted")
     f.write('\n</section>\n')
@@ -633,13 +633,13 @@ def writeTagsDetail(db, f, collection):
         if movies:
             f.write(f"""
                 <div class="row row-striped p-3" data-search='["{tagname}"]'>
-                    <div class="col-3"><h4 id="{t['oid']}">{tagname}</h4></div>
+                    <div class="col-3"><h4 id="{t['guid']}">{tagname}</h4></div>
                     <div class="col-9">
                 """)
             for m in movies:
                 mcnt = mcnt + 1
                 f.write(f"""
-                    <a href="#{m['oid']}" style="text-decoration:none">
+                    <a href="#{m['guid']}" style="text-decoration:none">
                         <span class="badge bg-secondary">{m['title']}</span>
                     </a>
                 """)

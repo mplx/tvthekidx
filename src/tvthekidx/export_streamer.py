@@ -1016,7 +1016,7 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
                       poster_uri, jellyfin, similar_movies, poster_uri_map,
                       portrait_uri_map=None, screenshot_uris=None,
                       similar_tvshows=None, show_poster_uri_map=None):
-    oid = movie['oid']
+    oid = movie['guid']
     title = movie['title']
     title_orig = movie['title_orig']
     year = movie['year']
@@ -1055,7 +1055,7 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
         f.write(f'<div class="mt-2 mb-1"><span class="score-chip me-2" style="background:{sc}">{score}%</span>')
         f.write(f'<a href="../../genres/{_yshard(year)}/{year}.html" class="badge bg-secondary me-2">{year}</a>')
         for g in genres:
-            f.write(f'<a href="../../genres/{g["oid"]}.html" class="badge bg-dark me-1">{_esc(g["name"])}</a>')
+            f.write(f'<a href="../../genres/{g["guid"]}.html" class="badge bg-dark me-1">{_esc(g["name"])}</a>')
         f.write('</div>\n')
 
         if desc:
@@ -1073,7 +1073,7 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
                 p_uri = (portrait_uri_map or {}).get(p['id'], '')
                 job = p['job'] or ''
                 f.write(_person_card_html(
-                    f'../../persons/{_pshard(p["oid"])}/{p["oid"]}.html',
+                    f'../../persons/{_pshard(p["guid"])}/{p["guid"]}.html',
                     p_uri, p['name'], is_placeholder=not p_uri,
                     sublabel=_JOB_DE.get(job, job)) + '\n')
             f.write('</div>\n')
@@ -1084,7 +1084,7 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
             for p in cast:
                 p_uri = (portrait_uri_map or {}).get(p['id'], '')
                 f.write(_person_card_html(
-                    f'../../persons/{_pshard(p["oid"])}/{p["oid"]}.html',
+                    f'../../persons/{_pshard(p["guid"])}/{p["guid"]}.html',
                     p_uri, p['name'], is_placeholder=not p_uri) + '\n')
             f.write('</div>\n')
 
@@ -1147,7 +1147,7 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
         if similar_movies:
             f.write('<h5 class="fp-section-h5">Ähnliche Filme</h5>\n<div class="poster-row">\n')
             for sm in similar_movies:
-                sm_oid = sm['oid']
+                sm_oid = sm['guid']
                 sm_uri = poster_uri_map.get(sm['id'], '')
                 f.write(_poster_card_html(f'../{_pshard(sm_oid)}/{sm_oid}.html',
                                           sm_uri,
@@ -1160,7 +1160,7 @@ def _write_movie_page(out_path, movie, cast, crew, genres, collections,
         if similar_tvshows:
             f.write('<h5 class="fp-section-h5">Ähnliche Serien</h5>\n<div class="poster-row">\n')
             for s in similar_tvshows:
-                s_oid = s['oid']
+                s_oid = s['guid']
                 s_uri = (show_poster_uri_map or {}).get(s['id'], '')
                 f.write(_poster_card_html(f'../../shows/{_pshard(s_oid)}/{s_oid}.html',
                                           s_uri,
@@ -1215,7 +1215,7 @@ def _write_person_page(out_path, actor, portrait_uri, movies, poster_uri_map,
             )
             f.write('<div id="fp-filmlist">\n')
             for m in movies_sorted:
-                m_oid = m['oid']
+                m_oid = m['guid']
                 m_href = f'../../media/{_pshard(m_oid)}/{m_oid}.html'
                 m_uri = poster_uri_map.get(m['id'], '')
                 score = int(m['score'] or 0)
@@ -1287,7 +1287,7 @@ def _write_person_page(out_path, actor, portrait_uri, movies, poster_uri_map,
             )
             f.write('<div class="d-flex flex-wrap gap-3 mb-4">\n')
             for s in tvshows_sorted:
-                s_oid = s['oid'] or ''
+                s_oid = s['guid'] or ''
                 s_uri = (show_poster_uri_map or {}).get(s['id'], '')
                 score = int(s['score'] or 0)
                 sc_col = _score_color(score)
@@ -1319,7 +1319,7 @@ def _write_genre_page(out_path, genre_name, movies, poster_uri_map,
         if movies:
             f.write('<div id="fp-filmlist" class="poster-grid">\n')
             for m in movies:
-                m_oid = m['oid']
+                m_oid = m['guid']
                 m_uri = poster_uri_map.get(m['id'], '')
                 f.write(_poster_card_html(f'../media/{_pshard(m_oid)}/{m_oid}.html',
                                           m_uri,
@@ -1336,7 +1336,7 @@ def _write_genre_page(out_path, genre_name, movies, poster_uri_map,
             f.write(f'<h3 class="section-title mt-4">Serien <span class="badge bg-secondary fp-cnt">{len(tvshows)}</span></h3>\n')
             f.write('<div class="poster-grid">\n')
             for s in sorted(tvshows, key=lambda x: (x['title_normalized'] or x['title'] or '').upper()):
-                s_oid = s['oid']
+                s_oid = s['guid']
                 s_uri = _spuri.get(s['id'], '')
                 f.write(_poster_card_html(f'../shows/{_pshard(s_oid)}/{s_oid}.html',
                                           s_uri,
@@ -1364,7 +1364,7 @@ def _write_year_page(out_path, year, movies, poster_uri_map,
         if movies:
             f.write('<div id="fp-filmlist" class="poster-grid">\n')
             for m in movies:
-                m_oid = m['oid']
+                m_oid = m['guid']
                 m_uri = poster_uri_map.get(m['id'], '')
                 f.write(_poster_card_html(
                     f'../../media/{_pshard(m_oid)}/{m_oid}.html',
@@ -1382,7 +1382,7 @@ def _write_year_page(out_path, year, movies, poster_uri_map,
             f.write(f'<h3 class="section-title mt-4">Serien <span class="badge bg-secondary fp-cnt">{len(tvshows)}</span></h3>\n')
             f.write('<div class="poster-grid">\n')
             for s in sorted(tvshows, key=lambda x: (x['title_normalized'] or x['title'] or '').upper()):
-                s_oid = s['oid']
+                s_oid = s['guid']
                 s_uri = _spuri.get(s['id'], '')
                 f.write(_poster_card_html(f'../../shows/{_pshard(s_oid)}/{s_oid}.html',
                                           s_uri,
@@ -1409,7 +1409,7 @@ def _write_tag_page(out_path, tag_name, movies, poster_uri_map, movie_by_id,
         if movies:
             f.write('<div id="fp-filmlist" class="poster-grid">\n')
             for m in movies:
-                m_oid = m['oid']
+                m_oid = m['guid']
                 m_full = movie_by_id.get(m['id'])
                 year = m_full['year'] if m_full else 0
                 score = int(m_full['score'] or 0) if m_full else 0
@@ -1429,7 +1429,7 @@ def _write_tag_page(out_path, tag_name, movies, poster_uri_map, movie_by_id,
             f.write(f'<h3 class="section-title mt-4">Serien <span class="badge bg-secondary fp-cnt">{len(tvshows)}</span></h3>\n')
             f.write('<div class="poster-grid">\n')
             for s in sorted(tvshows, key=lambda x: (x['title_normalized'] or x['title'] or '').upper()):
-                s_oid = s['oid']
+                s_oid = s['guid']
                 s_uri = _spuri.get(s['id'], '')
                 f.write(_poster_card_html(f'../shows/{_pshard(s_oid)}/{s_oid}.html',
                                           s_uri,
@@ -1489,7 +1489,7 @@ def _write_tvstation_page(out_path, station_key, movies, poster_uri_map,
         if movies:
             f.write('<div id="fp-filmlist" class="poster-grid">\n')
             for m in movies:
-                m_oid = m['oid']
+                m_oid = m['guid']
                 m_uri = poster_uri_map.get(m['id'], '')
                 f.write(_poster_card_html(f'../media/{_pshard(m_oid)}/{m_oid}.html',
                                           m_uri,
@@ -1505,7 +1505,7 @@ def _write_tvstation_page(out_path, station_key, movies, poster_uri_map,
             f.write(f'<h2 class="fp-section-h2 mt-4">Serien <span class="badge bg-secondary ms-2 fp-cnt">{len(tvshows)}</span></h2>\n')
             f.write('<div class="poster-grid">\n')
             for s in tvshows:
-                s_oid = s['oid']
+                s_oid = s['guid']
                 s_uri = (show_poster_uri_map or {}).get(s['id'], '')
                 f.write(_poster_card_html(f'../shows/{_pshard(s_oid)}/{s_oid}.html',
                                           s_uri,
@@ -1536,7 +1536,7 @@ def _write_list_page(out_path, page_title, movies, poster_uri_map, sortable=Fals
             grid_id = ' id="fp-filmlist"' if sortable else ''
             f.write(f'<div class="poster-grid"{grid_id}>\n')
             for m in movies:
-                m_oid = m['oid']
+                m_oid = m['guid']
                 m_uri = poster_uri_map.get(m['id'], '')
                 da = {'title': m['title'] or '', 'year': m['year'] or 0, 'score': int(m['score'] or 0)} if sortable else None
                 f.write(_poster_card_html(f'media/{_pshard(m_oid)}/{m_oid}.html',
@@ -1592,7 +1592,7 @@ def _write_index(out_path, targetpath, title,
             f.write('<h2 class="section-title" id="fp-random"><a href="random.html">Zufall</a></h2>\n<div class="poster-row">\n')
             for m in random_movies:
                 m_uri = poster_uri_map.get(m['id'], '')
-                f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
+                f.write(_poster_card_html(f'media/{_pshard(m["guid"])}/{m["guid"]}.html',
                                           m_uri, f"{m['title']} ({m['year']})",
                                           is_placeholder=not m_uri,
                                           score=int(m['score'] or 0)) + '\n')
@@ -1602,7 +1602,7 @@ def _write_index(out_path, targetpath, title,
         f.write('<h2 class="section-title" id="fp-new"><a href="new.html">Neu hinzugefügt</a></h2>\n<div class="poster-row">\n')
         for m in newest_movies:
             m_uri = poster_uri_map.get(m['id'], '')
-            f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
+            f.write(_poster_card_html(f'media/{_pshard(m["guid"])}/{m["guid"]}.html',
                                       m_uri, f"{m['title']} ({m['year']})",
                                       is_placeholder=not m_uri,
                                       score=int(m['score'] or 0)) + '\n')
@@ -1612,7 +1612,7 @@ def _write_index(out_path, targetpath, title,
         f.write('<h2 class="section-title" id="fp-top"><a href="top.html">Top bewertet</a></h2>\n<div class="poster-row">\n')
         for m in top_movies:
             m_uri = poster_uri_map.get(m['id'], '')
-            f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
+            f.write(_poster_card_html(f'media/{_pshard(m["guid"])}/{m["guid"]}.html',
                                       m_uri, f"{m['title']} ({m['year']})",
                                       is_placeholder=not m_uri,
                                       score=int(m['score'] or 0)) + '\n')
@@ -1624,12 +1624,12 @@ def _write_index(out_path, targetpath, title,
             for g in top_genres:
                 gid = g['id']
                 gnm = g['name']
-                goid = g['oid']
+                goid = g['guid']
                 f.write(f'<h4 class="fp-genre-sub"><a href="genres/{goid}.html">{_esc(gnm)}</a></h4>\n')
                 f.write('<div class="poster-row">\n')
                 for m in genre_newest.get(gid, []):
                     m_uri = poster_uri_map.get(m['id'], '')
-                    f.write(_poster_card_html(f'media/{_pshard(m["oid"])}/{m["oid"]}.html',
+                    f.write(_poster_card_html(f'media/{_pshard(m["guid"])}/{m["guid"]}.html',
                                               m_uri, f"{m['title']} ({m['year']})",
                                               is_placeholder=not m_uri,
                                               score=int(m['score'] or 0)) + '\n')
@@ -1643,7 +1643,7 @@ def _write_index(out_path, targetpath, title,
             f.write('<h4 class="fp-genre-sub">Neue Serien</h4>\n<div class="poster-row">\n')
             for s in newest_shows:
                 s_uri = _spuri.get(s['id'], '')
-                f.write(_poster_card_html(f'shows/{_pshard(s["oid"])}/{s["oid"]}.html',
+                f.write(_poster_card_html(f'shows/{_pshard(s["guid"])}/{s["guid"]}.html',
                                           s_uri, f"{s['title']} ({s['year']})",
                                           is_placeholder=not s_uri,
                                           score=int(s['score'] or 0)) + '\n')
@@ -1652,7 +1652,7 @@ def _write_index(out_path, targetpath, title,
             f.write('<h4 class="fp-genre-sub">Top Serien</h4>\n<div class="poster-row">\n')
             for s in top_shows:
                 s_uri = _spuri.get(s['id'], '')
-                f.write(_poster_card_html(f'shows/{_pshard(s["oid"])}/{s["oid"]}.html',
+                f.write(_poster_card_html(f'shows/{_pshard(s["guid"])}/{s["guid"]}.html',
                                           s_uri, f"{s['title']} ({s['year']})",
                                           is_placeholder=not s_uri,
                                           score=int(s['score'] or 0)) + '\n')
@@ -1663,8 +1663,8 @@ def _write_index(out_path, targetpath, title,
             f.write('<h2 class="section-title" id="fp-persons">Beliebte Künstler</h2>\n<div class="poster-row">\n')
             for a in popular_persons:
                 a_uri = portrait_uri_map.get(a['id'], '')
-                shard = _pshard(a['oid'])
-                f.write(_person_card_html(f'persons/{shard}/{a["oid"]}.html',
+                shard = _pshard(a['guid'])
+                f.write(_person_card_html(f'persons/{shard}/{a["guid"]}.html',
                                           a_uri,
                                           a['name'],
                                           is_placeholder=not a_uri) + '\n')
@@ -1675,8 +1675,8 @@ def _write_index(out_path, targetpath, title,
             f.write('<h2 class="section-title">Neue Künstler</h2>\n<div class="poster-row">\n')
             for a in newest_persons:
                 a_uri = portrait_uri_map.get(a['id'], '')
-                shard = _pshard(a['oid'])
-                f.write(_person_card_html(f'persons/{shard}/{a["oid"]}.html',
+                shard = _pshard(a['guid'])
+                f.write(_person_card_html(f'persons/{shard}/{a["guid"]}.html',
                                           a_uri,
                                           a['name'],
                                           is_placeholder=not a_uri) + '\n')
@@ -1687,8 +1687,8 @@ def _write_index(out_path, targetpath, title,
             f.write('<h2 class="section-title">Zufällige Künstler</h2>\n<div class="poster-row">\n')
             for a in random_persons:
                 a_uri = portrait_uri_map.get(a['id'], '')
-                shard = _pshard(a['oid'])
-                f.write(_person_card_html(f'persons/{shard}/{a["oid"]}.html',
+                shard = _pshard(a['guid'])
+                f.write(_person_card_html(f'persons/{shard}/{a["guid"]}.html',
                                           a_uri,
                                           a['name'],
                                           is_placeholder=not a_uri) + '\n')
@@ -1699,7 +1699,7 @@ def _write_index(out_path, targetpath, title,
             all_genres_sorted = sorted(all_genres, key=lambda g: g['name'].upper())
             f.write('<h2 class="section-title" id="fp-genres-list">Genres</h2>\n<div class="mb-3">\n')
             for g in all_genres_sorted:
-                f.write(f'<a href="genres/{g["oid"]}.html" class="badge bg-dark me-1 mb-1" style="font-size:.8rem">{_esc(g["name"])}</a>')
+                f.write(f'<a href="genres/{g["guid"]}.html" class="badge bg-dark me-1 mb-1" style="font-size:.8rem">{_esc(g["name"])}</a>')
             f.write('\n</div>\n')
 
         # Veröffentlichung (years) nav
@@ -1713,7 +1713,7 @@ def _write_index(out_path, targetpath, title,
         if all_tags:
             f.write('<h2 class="section-title" id="fp-tags">Tags</h2>\n<div class="mb-3">\n')
             for t in all_tags:
-                f.write(f'<a href="tags/{t["oid"]}.html" class="badge bg-secondary me-1 mb-1" style="font-size:.8rem">{_esc(t["tag"])}</a>')
+                f.write(f'<a href="tags/{t["guid"]}.html" class="badge bg-secondary me-1 mb-1" style="font-size:.8rem">{_esc(t["tag"])}</a>')
             f.write('\n</div>\n')
 
         # TV stations nav
@@ -1738,7 +1738,7 @@ def _write_index(out_path, targetpath, title,
 def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_map,
                      cast, crew, genres, poster_uri, similar_shows, show_poster_uri_map,
                      title, jellyfin, similar_movies=None, poster_uri_map=None):
-    oid = show['oid']
+    oid = show['guid']
     s_title = show['title']
     year = show['year']
     desc = (show['description'] or '')[:800]
@@ -1775,7 +1775,7 @@ def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_ma
         f.write(f'<div class="mt-2 mb-1"><span class="score-chip me-2" style="background:{sc}">{score}%</span>')
         f.write(f'<span class="badge bg-secondary me-2">{year}</span>')
         for g in genres:
-            f.write(f'<a href="../../genres/{g["oid"]}.html" class="badge bg-dark me-1">{_esc(g["name"])}</a>')
+            f.write(f'<a href="../../genres/{g["guid"]}.html" class="badge bg-dark me-1">{_esc(g["name"])}</a>')
         f.write('</div>\n')
         if desc:
             f.write(f'<p class="fp-hero-desc">{_esc(desc)}</p>\n')
@@ -1787,7 +1787,7 @@ def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_ma
         if crew:
             f.write('<h5 class="fp-section-h5">Regie/Buch</h5>\n<div class="poster-row">\n')
             for p in crew[:10]:
-                p_oid = p['oid'] or ''
+                p_oid = p['guid'] or ''
                 p_uri = show_poster_uri_map.get(p['id'], '')
                 job = p['job'] or ''
                 f.write(_person_card_html(
@@ -1801,7 +1801,7 @@ def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_ma
             cast_sorted = sorted(cast[:20], key=lambda p: (p['name'] or '').upper())
             f.write('<h5 class="fp-section-h5">Besetzung</h5>\n<div class="poster-row">\n')
             for p in cast_sorted:
-                p_oid = p['oid'] or ''
+                p_oid = p['guid'] or ''
                 p_uri = show_poster_uri_map.get(p['id'], '')
                 f.write(_person_card_html(
                     f'../../persons/{_pshard(p_oid)}/{p_oid}.html' if p_oid else '#',
@@ -1856,7 +1856,7 @@ def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_ma
             for s in similar_shows[:10]:
                 s_uri = show_poster_uri_map.get(s['id'], '')
                 f.write(_poster_card_html(
-                    f'../../shows/{_pshard(s["oid"])}/{s["oid"]}.html',
+                    f'../../shows/{_pshard(s["guid"])}/{s["guid"]}.html',
                     s_uri, f"{s['title']} ({s['year']})", is_placeholder=not s_uri,
                     score=int(s['score'] or 0)) + '\n')
             f.write('</div>\n')
@@ -1865,7 +1865,7 @@ def _write_show_page(out_path, show, seasons, episodes_by_show, episode_files_ma
         if similar_movies:
             f.write('<h5 class="fp-section-h5">Ähnliche Filme</h5>\n<div class="poster-row">\n')
             for m in similar_movies:
-                m_oid = m['oid']
+                m_oid = m['guid']
                 m_uri = (poster_uri_map or {}).get(m['id'], '')
                 f.write(_poster_card_html(
                     f'../../media/{_pshard(m_oid)}/{m_oid}.html',
@@ -1898,7 +1898,7 @@ def _ep_file_meta(file_row):
 def _write_season_page(out_path, show, season, episodes, episode_files_map,
                        show_poster_uri, site_title,
                        screenshot_map=None, unmatched_files=None):
-    show_oid = show['oid']
+    show_oid = show['guid']
     sn = season['season_number']
     s_title = show['title']
     ep_by_num = {ep['episode_number']: ep for ep in episodes}
@@ -2266,7 +2266,7 @@ def export(db, collection, args, plugin_args):
 
     # newest 20 movies
     cur.execute(
-        f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
+        f'SELECT DISTINCT m.id, m.guid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id{_col_wh()} '
         f'ORDER BY f.added DESC, m.title COLLATE NOCASE ASC LIMIT 20',
         _col_params())
@@ -2275,7 +2275,7 @@ def export(db, collection, args, plugin_args):
     # top 20 movies (has poster, score < 100)
     wh = ('WHERE ' if not col_where else f'WHERE {col_where} AND ') + 'm.score < 100 AND EXISTS (SELECT 1 FROM attachments a WHERE a.ref_id=m.id AND a.type=\'poster\')'
     cur.execute(
-        f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
+        f'SELECT DISTINCT m.id, m.guid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id {wh} '
         f'ORDER BY m.score DESC, m.title COLLATE NOCASE ASC LIMIT 20',
         _col_params())
@@ -2283,7 +2283,7 @@ def export(db, collection, args, plugin_args):
 
     # random 250 movies (first 20 used for the index carousel, all 250 for random.html)
     cur.execute(
-        f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
+        f'SELECT DISTINCT m.id, m.guid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id{_col_wh()} '
         f'ORDER BY RANDOM() LIMIT 250',
         _col_params())
@@ -2292,7 +2292,7 @@ def export(db, collection, args, plugin_args):
 
     # newest 250 / top 250 for full-list pages
     cur.execute(
-        f'SELECT m.id, m.oid, m.title, m.year, m.score, MAX(f.added) AS last_added '
+        f'SELECT m.id, m.guid, m.title, m.year, m.score, MAX(f.added) AS last_added '
         f'FROM movies m JOIN files f ON f.movie_id = m.id{_col_wh()} '
         f'GROUP BY m.id '
         f'ORDER BY last_added DESC, m.title COLLATE NOCASE ASC LIMIT 250',
@@ -2301,7 +2301,7 @@ def export(db, collection, args, plugin_args):
 
     wh250 = ('WHERE ' if not col_where else f'WHERE {col_where} AND ') + 'm.score < 100'
     cur.execute(
-        f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
+        f'SELECT DISTINCT m.id, m.guid, m.title, m.year, m.score '
         f'FROM movies m JOIN files f ON f.movie_id = m.id {wh250} '
         f'ORDER BY m.score DESC, m.title COLLATE NOCASE ASC LIMIT 250',
         _col_params())
@@ -2309,7 +2309,7 @@ def export(db, collection, args, plugin_args):
 
     # top 10 genres by movie count
     cur.execute(
-        f'SELECT g.id, g.oid, g.name, COUNT(DISTINCT m.id) AS cnt '
+        f'SELECT g.id, g.guid, g.name, COUNT(DISTINCT m.id) AS cnt '
         f'FROM genres g '
         f'JOIN movies_genres mg ON g.id = mg.genre_id '
         f'JOIN movies m ON mg.movie_id = m.id '
@@ -2323,7 +2323,7 @@ def export(db, collection, args, plugin_args):
     for g in top_genres:
         and_col = f' AND {col_where}' if col_where else ''
         cur.execute(
-            f'SELECT DISTINCT m.id, m.oid, m.title, m.year, m.score '
+            f'SELECT DISTINCT m.id, m.guid, m.title, m.year, m.score '
             f'FROM movies m '
             f'JOIN movies_genres mg ON m.id = mg.movie_id '
             f'JOIN files f ON f.movie_id = m.id '
@@ -2337,7 +2337,7 @@ def export(db, collection, args, plugin_args):
 
     # newest 20 persons (≥2 movies in this collection, ordered by most-recently-added file)
     cur.execute(
-        f'SELECT a.id, a.oid, a.name, a.popularity, a.tmdb_id '
+        f'SELECT a.id, a.guid, a.name, a.popularity, a.tmdb_id '
         f'FROM actors a '
         f'JOIN actors_movies am ON a.id = am.a_id '
         f'JOIN movies m ON am.m_id = m.id '
@@ -2350,7 +2350,7 @@ def export(db, collection, args, plugin_args):
 
     # random 20 persons (≥2 movies in this collection)
     cur.execute(
-        f'SELECT a.id, a.oid, a.name, a.popularity, a.tmdb_id '
+        f'SELECT a.id, a.guid, a.name, a.popularity, a.tmdb_id '
         f'FROM actors a '
         f'JOIN actors_movies am ON a.id = am.a_id '
         f'JOIN movies m ON am.m_id = m.id '
@@ -2365,7 +2365,7 @@ def export(db, collection, args, plugin_args):
     newest_shows = []
     if show_ids:
         cur.execute(
-            f'SELECT DISTINCT s.id, s.oid, s.title, s.year, s.score '
+            f'SELECT DISTINCT s.id, s.guid, s.title, s.year, s.score '
             f'FROM tvshows s '
             f'JOIN files f ON f.tvshow_id = s.id{_col_wh()} '
             f'ORDER BY f.added DESC, s.title COLLATE NOCASE ASC LIMIT 20',
@@ -2377,7 +2377,7 @@ def export(db, collection, args, plugin_args):
     if show_ids:
         wh_tv = ('WHERE ' if not col_where else f'WHERE {col_where} AND ') + "s.score < 100 AND EXISTS (SELECT 1 FROM attachments a WHERE a.ref_id=s.id AND a.type='tvshow_poster')"
         cur.execute(
-            f'SELECT DISTINCT s.id, s.oid, s.title, s.year, s.score '
+            f'SELECT DISTINCT s.id, s.guid, s.title, s.year, s.score '
             f'FROM tvshows s '
             f'JOIN files f ON f.tvshow_id = s.id {wh_tv} '
             f'ORDER BY s.score DESC, s.title COLLATE NOCASE ASC LIMIT 20',
@@ -2416,12 +2416,12 @@ def export(db, collection, args, plugin_args):
     # --- write movie pages ---
     verbose(f"Writing {len(movies)} movie pages...", 1)
     for m in movies:
-        if not m['oid']:
+        if not m['guid']:
             continue
         mid = m['id']
-        shard_dir = os.path.join(targetpath, 'media', _pshard(m['oid']))
+        shard_dir = os.path.join(targetpath, 'media', _pshard(m['guid']))
         os.makedirs(shard_dir, exist_ok=True)
-        path = os.path.join(shard_dir, f"{m['oid']}.html")
+        path = os.path.join(shard_dir, f"{m['guid']}.html")
         similar_movies = [movie_by_id[sid] for sid in top_similar.get(mid, []) if sid in movie_by_id]
         qual_cast = sorted(
             [p for p in cast_map.get(mid, []) if p['id'] in qualified_actor_ids],
@@ -2443,12 +2443,12 @@ def export(db, collection, args, plugin_args):
     qualified_actors = [a for a in actors if a['id'] in qualified_actor_ids]
     verbose(f"Writing {len(qualified_actors)} person pages...", 1)
     for a in qualified_actors:
-        if not a['oid']:
+        if not a['guid']:
             continue
         aid = a['id']
-        shard_dir = os.path.join(targetpath, 'persons', _pshard(a['oid']))
+        shard_dir = os.path.join(targetpath, 'persons', _pshard(a['guid']))
         os.makedirs(shard_dir, exist_ok=True)
-        path = os.path.join(shard_dir, f"{a['oid']}.html")
+        path = os.path.join(shard_dir, f"{a['guid']}.html")
         actor_movies = [m for m in movies_by_actor.get(aid, []) if m['id'] in movie_by_id]
         actor_shows = [s for s in tvshows_by_actor.get(aid, []) if s['id'] in tvshow_by_id]
         _write_person_page(
@@ -2473,7 +2473,7 @@ def export(db, collection, args, plugin_args):
         genre_movies = sorted(
             [movie_by_id[mid] for mid in genre_movie_ids if mid in movie_by_id],
             key=lambda m: (m['title_normalized'] or m['title']).upper())
-        path = os.path.join(targetpath, 'genres', f"{g['oid']}.html")
+        path = os.path.join(targetpath, 'genres', f"{g['guid']}.html")
         _write_genre_page(path, g['name'], genre_movies, poster_uri_map,
                           tvshows=shows_by_genre_id.get(gid),
                           show_poster_uri_map=show_poster_uri_map)
@@ -2499,7 +2499,7 @@ def export(db, collection, args, plugin_args):
     for t in tags_list:
         t_movies_sorted = sorted(tags.getMoviesByTagid(db, t['id'], col_where or None, col_params or None),
                                  key=lambda m: m['title'].upper())
-        path = os.path.join(targetpath, 'tags', f"{t['oid']}.html")
+        path = os.path.join(targetpath, 'tags', f"{t['guid']}.html")
         _write_tag_page(path, t['tag'], t_movies_sorted, poster_uri_map, movie_by_id,
                         tvshows=shows_by_tag_id.get(t['id']),
                         show_poster_uri_map=show_poster_uri_map)
@@ -2539,12 +2539,12 @@ def export(db, collection, args, plugin_args):
     # --- write TV show and season pages ---
     verbose(f"Writing {len(tv_shows)} TV show pages...", 1)
     for s in tv_shows:
-        if not s['oid']:
+        if not s['guid']:
             continue
         sid = s['id']
-        shard_dir = os.path.join(targetpath, 'shows', _pshard(s['oid']))
+        shard_dir = os.path.join(targetpath, 'shows', _pshard(s['guid']))
         os.makedirs(shard_dir, exist_ok=True)
-        path = os.path.join(shard_dir, f"{s['oid']}.html")
+        path = os.path.join(shard_dir, f"{s['guid']}.html")
         s_cast = [p for p in tv_cast_map.get(sid, []) if p['id'] in qualified_actor_ids]
         s_crew = [p for p in tv_crew_map.get(sid, []) if p['id'] in qualified_actor_ids]
         s_genres = tv_genre_map.get(sid, [])
@@ -2572,7 +2572,7 @@ def export(db, collection, args, plugin_args):
             poster_uri_map=poster_uri_map)
         show_unmatched = tv_unmatched_files_map.get(sid, [])
         for season in s_seasons:
-            season_path = os.path.join(shard_dir, f"{s['oid']}_s{season['season_number']}.html")
+            season_path = os.path.join(shard_dir, f"{s['guid']}_s{season['season_number']}.html")
             season_eps = [ep for ep in tv_episodes_map.get(sid, [])
                           if ep['season_number'] == season['season_number']]
             _write_season_page(season_path, s, season, season_eps,
@@ -2583,36 +2583,36 @@ def export(db, collection, args, plugin_args):
     # --- build search index ---
     search_index = []
     for m in movies:
-        if not m['oid']:
+        if not m['guid']:
             continue
         search_index.append({
             'type': 'movie',
             'q': f"{m['title']} {m['title_orig']}",
             'display': _esc(m['title']),
             'year': m['year'],
-            'url': f"media/{_pshard(m['oid'])}/{m['oid']}.html",
+            'url': f"media/{_pshard(m['guid'])}/{m['guid']}.html",
             'poster': poster_thumb_map.get(m['id'], ''),
         })
     for s in tv_shows:
-        if not s['oid']:
+        if not s['guid']:
             continue
         search_index.append({
             'type': 'show',
             'q': f"{s['title']} {s['title_orig'] or ''}",
             'display': _esc(s['title']),
             'year': s['year'],
-            'url': f"shows/{_pshard(s['oid'])}/{s['oid']}.html",
+            'url': f"shows/{_pshard(s['guid'])}/{s['guid']}.html",
             'poster': show_poster_thumb_map.get(s['id'], ''),
         })
     for a in qualified_actors:
-        if not a['oid']:
+        if not a['guid']:
             continue
-        shard = _pshard(a['oid'])
+        shard = _pshard(a['guid'])
         search_index.append({
             'type': 'person',
             'q': a['name'],
             'display': _esc(a['name']),
-            'url': f"persons/{shard}/{a['oid']}.html",
+            'url': f"persons/{shard}/{a['guid']}.html",
             'portrait': portrait_thumb_map.get(a['id'], ''),
         })
 

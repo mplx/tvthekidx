@@ -23,6 +23,10 @@
 - File discovery via regex — `scanDir` now enumerates files by extension only and applies the collection's movie regex as the filter, replacing the year-anchored glob pre-filter; the regex is the single source of truth for both discovery and title/year extraction
 
 ### Changed
+- Schema migrations are atomic and fail loudly: each version step runs in one transaction with its version bump, and an error rolls the step back and stops with a message naming the step, instead of being printed and skipped (which could leave a database claiming a version whose schema it lacked)
+- Duplicate movie rows (same TMDB id indexed under two file names) are merged during the upgrade, so the unique id index can be created; previously the index was silently missing and both movies shared one exported page
+- **Database schema v15**: the stable-ID column `oid` is renamed to `guid` in all tables. `oid` is SQLite's built-in alias for `rowid`; SQLite 3.54 refuses to add, rename or drop a column of that name, so databases created with SQLite ≥ 3.54 lacked the column and failed on the first insert (`datatype mismatch`), and upgrading databases older than v6 crashed. Existing databases are migrated automatically (tables are rebuilt; exported page URLs stay the same); databases created broken are repaired
+- `export` and maintenance actions upgrade the database schema before running, like `index` already did
 - Screenshots and video probing call `ffmpeg`/`ffprobe` directly; `moviepy` and `ffmpeg-python` dependencies removed, `pillow` no longer capped below 12
 - TMDB requests and poster downloads time out after 30 s instead of blocking forever on a stalled connection
 - Bulk database queries are split into chunks, fixing "too many SQL variables" on large libraries

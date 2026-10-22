@@ -73,7 +73,7 @@ class TestTVShows:
     def test_addTVShowToDb_oid_set(self, db):
         addTVShowToDb(db, _SHOW)
         cur = db.cursor()
-        cur.execute("SELECT oid FROM tvshows WHERE tmdb_id = ?", (_SHOW['tmdb_id'],))
+        cur.execute("SELECT guid FROM tvshows WHERE tmdb_id = ?", (_SHOW['tmdb_id'],))
         row = cur.fetchone()
         assert row is not None
         assert row[0] is not None
@@ -257,22 +257,19 @@ class TestTVShowDeduplication:
 
     def test_migration_v12_merges_null_tmdb_id_title_duplicates(self, tmp_path):
         import sqlite3
-        # Build a pre-v12 DB manually with two stub rows for the same title
+        # Build a v11 DB with two stub rows for the same title
         db_path = str(tmp_path / "dup.db")
-        conn = migration.initialize_db(db_path)
+        conn = migration.initialize_db(db_path, target=11)
         # Insert two stubs with same title but different years (simulates pre-fix state)
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, oid) VALUES (NULL, 'Dup Show', 'Dup Show', 'dup show', 2015, 'oid-dup-2015')"
+            "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, guid) VALUES (NULL, 'Dup Show', 'Dup Show', 'dup show', 2015, 'guid-dup-2015')"
         )
         id1 = cur.lastrowid
         cur.execute(
-            "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, oid) VALUES (NULL, 'Dup Show', 'Dup Show', 'dup show', 2017, 'oid-dup-2017')"
+            "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, guid) VALUES (NULL, 'Dup Show', 'Dup Show', 'dup show', 2017, 'guid-dup-2017')"
         )
         id2 = cur.lastrowid
-        conn.commit()
-        # Manually set dbversion back to 11 to trigger migration
-        cur.execute("UPDATE settings SET value_int = 11 WHERE dbkey = 'dbversion'")
         conn.commit()
         conn.close()
 

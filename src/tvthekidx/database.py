@@ -220,7 +220,7 @@ def set_collection_regex(db, name, movie_regex=None, tvshow_regex=None):
 
 def addFileToDb(db, collection_id, filename, relpath, libtype=None):
     oid = generate_oid("file", f"{collection_id}:{relpath}:{filename}")
-    insertSQL = "INSERT INTO files (collection_id, filename, relpath, movie_id, lastseen, libtype, oid) VALUES (?, ?, ?, NULL, cast(strftime('%s','now') as int), ?, ?)"
+    insertSQL = "INSERT INTO files (collection_id, filename, relpath, movie_id, lastseen, libtype, guid) VALUES (?, ?, ?, NULL, cast(strftime('%s','now') as int), ?, ?)"
     selectSQL = "SELECT * FROM files WHERE collection_id = ? AND filename = ? AND relpath = ?"
     cur = execute_sql(db, selectSQL, (collection_id, filename, relpath))
     entry = cur.fetchone()
@@ -297,7 +297,7 @@ def addActorToDb(db, actor):
 
     if entry is None:
         oid = generate_oid("actor", str(actor['tmdb_id']))
-        insertSQL = "INSERT INTO actors(name, popularity, tmdb_id, oid) VALUES (?, ?, ?, ?)"
+        insertSQL = "INSERT INTO actors(name, popularity, tmdb_id, guid) VALUES (?, ?, ?, ?)"
         result = execute_sql(db, insertSQL, (actor['name'], actor['popularity'], actor['tmdb_id'], oid))
         actor_id = result.lastrowid
         if actor.get('profile'):
@@ -399,9 +399,9 @@ def getCrew_bulk(db, movie_ids, where=None, limit=None):
 
 def getMoviesByActor(db, aid):
     cur = db.cursor()
-    selectSQL = "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL = "SELECT m.id, m.guid, m.title, m.title_normalized, m.score, m.year FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
     selectSQL += " UNION "
-    selectSQL += "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
+    selectSQL += "SELECT m.id, m.guid, m.title, m.title_normalized, m.score, m.year FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id = ?"
     selectSQL += "ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
     cur.execute(selectSQL, (aid, aid))
     return cur.fetchall()
@@ -411,10 +411,10 @@ def getMoviesByActor_bulk(db, actor_ids):
     if not actor_ids:
         return {}
     sql = (
-        "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
+        "SELECT m.id, m.guid, m.title, m.title_normalized, m.score, m.year, c.a_id "
         "FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
         "UNION "
-        "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
+        "SELECT m.id, m.guid, m.title, m.title_normalized, m.score, m.year, c.a_id "
         "FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
         "ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
     )
@@ -430,7 +430,7 @@ def addGenreToDb(db, tmdb_id, name):
     row = cur.fetchone()
     if row is None:
         oid = generate_oid("genre", str(tmdb_id))
-        result = execute_sql(db, "INSERT INTO genres(tmdb_id, name, oid) VALUES (?, ?, ?)", (tmdb_id, name, oid))
+        result = execute_sql(db, "INSERT INTO genres(tmdb_id, name, guid) VALUES (?, ?, ?)", (tmdb_id, name, oid))
         return result.lastrowid
     return row['id']
 
@@ -459,7 +459,7 @@ def getGenres_bulk(db, movie_ids):
         return {}
     rows = _fetch_in_chunks(
         db,
-        "SELECT g.id, g.oid, g.name, g.tmdb_id, mg.movie_id FROM movies_genres mg JOIN genres g ON mg.genre_id = g.id WHERE mg.movie_id IN ({ph}) ORDER BY g.name ASC",
+        "SELECT g.id, g.guid, g.name, g.tmdb_id, mg.movie_id FROM movies_genres mg JOIN genres g ON mg.genre_id = g.id WHERE mg.movie_id IN ({ph}) ORDER BY g.name ASC",
         movie_ids)
     return _group_rows(rows, "movie_id")
 
@@ -469,7 +469,7 @@ def getTVGenres_bulk(db, show_ids):
         return {}
     rows = _fetch_in_chunks(
         db,
-        "SELECT g.id, g.oid, g.name, g.tmdb_id, tg.tvshow_id "
+        "SELECT g.id, g.guid, g.name, g.tmdb_id, tg.tvshow_id "
         "FROM tvshows_genres tg JOIN genres g ON tg.genre_id = g.id "
         "WHERE tg.tvshow_id IN ({ph}) ORDER BY g.name ASC",
         show_ids)
@@ -483,7 +483,7 @@ def getTVGenres_bulk(db, show_ids):
 def addMovieToDb(db, movie):
     key = str(movie['tmdb_id']) if movie['tmdb_id'] else f"{movie['title']}:{movie['release_year']}"
     oid = generate_oid("movie", key)
-    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    insertSQL = "INSERT INTO movies(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, guid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     result = execute_sql(db, insertSQL, (movie['tmdb_id'], movie['title'], movie['orig_title'], normalize_string(movie['title']), movie['release_year'], movie['description'], movie['popularity'], movie['score'], oid))
     movie_id = result.lastrowid
     if movie.get('poster'):
@@ -720,9 +720,9 @@ def refresh_movie(db, movie_api, tmdbid):
                 (result['title'], result['original_title'], normalize_string(result['title']),
                  release_year, result['overview'] or None,
                  result['popularity'], result['vote_average'] * 10, mid))
-    cur2 = execute_sql(db, "SELECT oid FROM movies WHERE id = ?", (mid,))
-    if cur2.fetchone()['oid'] is None:
-        execute_sql(db, "UPDATE movies SET oid = ? WHERE id = ?",
+    cur2 = execute_sql(db, "SELECT guid FROM movies WHERE id = ?", (mid,))
+    if cur2.fetchone()['guid'] is None:
+        execute_sql(db, "UPDATE movies SET guid = ? WHERE id = ?",
                     (generate_oid("movie", str(tmdbid)), mid))
 
     poster_path = result.get('poster_path')
@@ -812,7 +812,7 @@ def addTVShowToDb(db, show):
     key = str(show['tmdb_id']) if show['tmdb_id'] else f"{show['title']}:{show['year']}"
     oid = generate_oid("tvshow", key)
     result = execute_sql(db,
-                         "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         "INSERT INTO tvshows(tmdb_id, title, title_orig, title_normalized, year, description, popularity, score, guid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                          (show['tmdb_id'], show['title'], show['orig_title'], normalize_string(show['title']),
                           show['year'], show.get('description'), show.get('popularity', 0), show.get('score', 0), oid))
     show_id = result.lastrowid
@@ -824,7 +824,7 @@ def addTVShowToDb(db, show):
 def addSeasonToDb(db, tvshow_id, tvshow_tmdb_id, season_number, title, year):
     oid = generate_oid("season", f"{tvshow_tmdb_id}:{season_number}")
     execute_sql(db,
-                "INSERT OR IGNORE INTO seasons(tvshow_id, season_number, title, year, oid) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO seasons(tvshow_id, season_number, title, year, guid) VALUES (?, ?, ?, ?, ?)",
                 (tvshow_id, season_number, title, year, oid))
     cur = execute_sql(db, "SELECT id FROM seasons WHERE tvshow_id = ? AND season_number = ?", (tvshow_id, season_number))
     return cur.fetchone()['id']
@@ -833,7 +833,7 @@ def addSeasonToDb(db, tvshow_id, tvshow_tmdb_id, season_number, title, year):
 def addEpisodeToDb(db, episode):
     oid = generate_oid("episode", f"{episode['tvshow_tmdb_id']}:{episode['season_number']}:{episode['episode_number']}")
     execute_sql(db,
-                "INSERT OR IGNORE INTO episodes(tvshow_id, season_id, season_number, episode_number, title, year, description, score, oid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO episodes(tvshow_id, season_id, season_number, episode_number, title, year, description, score, guid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (episode['tvshow_id'], episode['season_id'], episode['season_number'],
                  episode['episode_number'], episode.get('title'), episode.get('year'),
                  episode.get('description'), episode.get('score', 0), oid))
@@ -896,7 +896,7 @@ def lookupTVShow(db, search, tv, title, year, episode_tag=None):
             if details:
                 new_oid = generate_oid("tvshow", str(tmdb_id))
                 execute_sql(db,
-                            "UPDATE tvshows SET tmdb_id=?, title_orig=?, title_normalized=?, description=?, popularity=?, score=?, oid=? WHERE id=?",
+                            "UPDATE tvshows SET tmdb_id=?, title_orig=?, title_normalized=?, description=?, popularity=?, score=?, guid=? WHERE id=?",
                             (tmdb_id, details.get('original_name', title), normalize_string(title),
                              details.get('overview') or None, details.get('popularity', 0),
                              float(details.get('vote_average') or 0) * 10, new_oid, show_id), True)
@@ -1091,10 +1091,10 @@ def getTVShowsByActor_bulk(db, actor_ids):
     if not actor_ids:
         return {}
     sql = (
-        "SELECT s.id, s.oid, s.title, s.title_normalized, s.score, s.year, ats.a_id "
+        "SELECT s.id, s.guid, s.title, s.title_normalized, s.score, s.year, ats.a_id "
         "FROM actors_tvshows ats JOIN tvshows s ON ats.s_id = s.id WHERE ats.a_id IN ({ph}) "
         "UNION "
-        "SELECT s.id, s.oid, s.title, s.title_normalized, s.score, s.year, cts.a_id "
+        "SELECT s.id, s.guid, s.title, s.title_normalized, s.score, s.year, cts.a_id "
         "FROM crew_tvshows cts JOIN tvshows s ON cts.s_id = s.id WHERE cts.a_id IN ({ph}) "
         "ORDER BY s.title_normalized COLLATE NOCASE ASC, s.year ASC"
     )
