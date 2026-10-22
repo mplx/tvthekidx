@@ -15,10 +15,52 @@ import re
 DEFAULT_MOVIE_REGEX = r'(?P<name>.*) \((?P<year>[0-9]{4})\)(?:.*?\{(?P<tvstation>[^}]+)\})?.*\..+'
 DEFAULT_TVSHOW_REGEX = r'(?P<name>.*) \((?P<year>[0-9]{4})\) [Ss](?P<season>[0-9]+)[Ee](?P<episode>[0-9]+)(?:.*?\{(?P<tvstation>[^}]+)\})?.*\..+'
 
+# Max bound parameters per statement used by the *_bulk queries. SQLite builds
+# before 3.32 cap SQLITE_MAX_VARIABLE_NUMBER at 999; keep headroom for extras.
+_SQL_MAX_PARAMS = 900
+
 
 # ---------------------------------------------------------------------------
 # Infrastructure
 # ---------------------------------------------------------------------------
+
+def _fetch_in_chunks(db, sql, ids, extra_params=(), repeat=1):
+    """Run sql once per chunk of ids and return all rows.
+
+    Every "{ph}" in sql is replaced by the chunk's placeholder list; repeat is
+    how often the ID list occurs in the statement (e.g. 2 for a UNION over both
+    branches). extra_params are appended after the ID parameters.
+    Avoids "too many SQL variables" for large ID lists.
+    """
+    ids = list(ids)
+    size = max(1, (_SQL_MAX_PARAMS - len(extra_params)) // repeat)
+    cur = db.cursor()
+    rows = []
+    for i in range(0, len(ids), size):
+        chunk = ids[i:i + size]
+        ph = ",".join("?" * len(chunk))
+        cur.execute(sql.replace("{ph}", ph), chunk * repeat + list(extra_params))
+        rows.extend(cur.fetchall())
+    return rows
+
+
+def _group_rows(rows, key):
+    result = {}
+    for row in rows:
+        result.setdefault(row[key], []).append(row)
+    return result
+
+
+def _get_attachments_bulk(db, ref_ids, att_type=None):
+    if not ref_ids:
+        return {}
+    sql = "SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
+    extra = ()
+    if att_type:
+        sql += " AND type = ?"
+        extra = (att_type,)
+    return _group_rows(_fetch_in_chunks(db, sql, ref_ids, extra), "ref_id")
+
 
 def create_connection(db_file):
     conn = None
@@ -231,20 +273,7 @@ def get_file_attachments(db, file_id, att_type=None):
 
 
 def get_file_attachments_bulk(db, file_ids, att_type=None):
-    if not file_ids:
-        return {}
-    ph = ",".join("?" * len(file_ids))
-    sql = f"SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
-    params = list(file_ids)
-    if att_type:
-        sql += " AND type = ?"
-        params.append(att_type)
-    cur = db.cursor()
-    cur.execute(sql, params)
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["ref_id"], []).append(row)
-    return result
+    return _get_attachments_bulk(db, file_ids, att_type)
 
 
 def delete_file_attachments(db, file_id, att_type=None):
@@ -296,20 +325,7 @@ def get_actor_attachments(db, actor_id, att_type=None):
 
 
 def get_actor_attachments_bulk(db, actor_ids, att_type=None):
-    if not actor_ids:
-        return {}
-    ph = ",".join("?" * len(actor_ids))
-    sql = f"SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
-    params = list(actor_ids)
-    if att_type:
-        sql += " AND type = ?"
-        params.append(att_type)
-    cur = db.cursor()
-    cur.execute(sql, params)
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["ref_id"], []).append(row)
-    return result
+    return _get_attachments_bulk(db, actor_ids, att_type)
 
 
 def getActors(db, where=None, orderby="popularity DESC, name ASC", params=None):
@@ -342,13 +358,12 @@ def getCast(db, mid, limit=None):
 def getCast_bulk(db, movie_ids, limit=None):
     if not movie_ids:
         return {}
-    ph = ",".join("?" * len(movie_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT a.*, c.m_id FROM actors_movies c JOIN actors a ON c.a_id = a.id WHERE c.m_id IN ({ph}) ORDER BY a.popularity DESC",
-        list(movie_ids))
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT a.*, c.m_id FROM actors_movies c JOIN actors a ON c.a_id = a.id WHERE c.m_id IN ({ph}) ORDER BY a.popularity DESC",
+        movie_ids)
     result = {}
-    for row in cur.fetchall():
+    for row in rows:
         lst = result.setdefault(row["m_id"], [])
         if limit is None or len(lst) < limit:
             lst.append(row)
@@ -370,15 +385,12 @@ def getCrew(db, mid, where=None, limit=None):
 def getCrew_bulk(db, movie_ids, where=None, limit=None):
     if not movie_ids:
         return {}
-    ph = ",".join("?" * len(movie_ids))
-    sql = f"SELECT a.*, c.job, c.m_id FROM crew_movies c JOIN actors a ON c.a_id = a.id WHERE c.m_id IN ({ph})"
+    sql = "SELECT a.*, c.job, c.m_id FROM crew_movies c JOIN actors a ON c.a_id = a.id WHERE c.m_id IN ({ph})"
     if where:
         sql += f" AND ({where})"
     sql += " ORDER BY a.popularity DESC"
-    cur = db.cursor()
-    cur.execute(sql, list(movie_ids))
     result = {}
-    for row in cur.fetchall():
+    for row in _fetch_in_chunks(db, sql, movie_ids):
         lst = result.setdefault(row["m_id"], [])
         if limit is None or len(lst) < limit:
             lst.append(row)
@@ -398,22 +410,15 @@ def getMoviesByActor(db, aid):
 def getMoviesByActor_bulk(db, actor_ids):
     if not actor_ids:
         return {}
-    ph = ",".join("?" * len(actor_ids))
-    params = list(actor_ids)
     sql = (
-        f"SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
-        f"FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
-        f"UNION "
-        f"SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
-        f"FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
-        f"ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
+        "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
+        "FROM actors_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
+        "UNION "
+        "SELECT m.id, m.oid, m.title, m.title_normalized, m.score, m.year, c.a_id "
+        "FROM crew_movies c JOIN movies m ON c.m_id = m.id WHERE c.a_id IN ({ph}) "
+        "ORDER BY m.title_normalized COLLATE NOCASE ASC, m.year ASC"
     )
-    cur = db.cursor()
-    cur.execute(sql, params + params)
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["a_id"], []).append(row)
-    return result
+    return _group_rows(_fetch_in_chunks(db, sql, actor_ids, repeat=2), "a_id")
 
 
 # ---------------------------------------------------------------------------
@@ -452,31 +457,23 @@ def storeMovieGenres(db, movie_id, genres):
 def getGenres_bulk(db, movie_ids):
     if not movie_ids:
         return {}
-    ph = ",".join("?" * len(movie_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT g.id, g.oid, g.name, g.tmdb_id, mg.movie_id FROM movies_genres mg JOIN genres g ON mg.genre_id = g.id WHERE mg.movie_id IN ({ph}) ORDER BY g.name ASC",
-        list(movie_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["movie_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT g.id, g.oid, g.name, g.tmdb_id, mg.movie_id FROM movies_genres mg JOIN genres g ON mg.genre_id = g.id WHERE mg.movie_id IN ({ph}) ORDER BY g.name ASC",
+        movie_ids)
+    return _group_rows(rows, "movie_id")
 
 
 def getTVGenres_bulk(db, show_ids):
     if not show_ids:
         return {}
-    ph = ",".join("?" * len(show_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT g.id, g.oid, g.name, g.tmdb_id, tg.tvshow_id "
-        f"FROM tvshows_genres tg JOIN genres g ON tg.genre_id = g.id "
-        f"WHERE tg.tvshow_id IN ({ph}) ORDER BY g.name ASC",
-        list(show_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["tvshow_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT g.id, g.oid, g.name, g.tmdb_id, tg.tvshow_id "
+        "FROM tvshows_genres tg JOIN genres g ON tg.genre_id = g.id "
+        "WHERE tg.tvshow_id IN ({ph}) ORDER BY g.name ASC",
+        show_ids)
+    return _group_rows(rows, "tvshow_id")
 
 
 # ---------------------------------------------------------------------------
@@ -589,20 +586,7 @@ def get_movie_attachments(db, movie_id, att_type=None):
 
 
 def get_movie_attachments_bulk(db, movie_ids, att_type=None):
-    if not movie_ids:
-        return {}
-    ph = ",".join("?" * len(movie_ids))
-    sql = f"SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
-    params = list(movie_ids)
-    if att_type:
-        sql += " AND type = ?"
-        params.append(att_type)
-    cur = db.cursor()
-    cur.execute(sql, params)
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["ref_id"], []).append(row)
-    return result
+    return _get_attachments_bulk(db, movie_ids, att_type)
 
 
 def getMovies(db, where=None, orderby=None, limit=None, params=None):
@@ -628,15 +612,11 @@ def getCollections(db, mid):
 def getCollections_bulk(db, movie_ids):
     if not movie_ids:
         return {}
-    ph = ",".join("?" * len(movie_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT DISTINCT f.id, c.name AS collection, f.filename, f.size, f.added, f.ctime, f.codec, f.width, f.height, f.duration, f.tvstation, f.movie_id FROM files f LEFT JOIN collections c ON f.collection_id = c.id WHERE f.movie_id IN ({ph}) ORDER BY c.name ASC",
-        list(movie_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["movie_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT DISTINCT f.id, c.name AS collection, f.filename, f.size, f.added, f.ctime, f.codec, f.width, f.height, f.duration, f.tvstation, f.movie_id FROM files f LEFT JOIN collections c ON f.collection_id = c.id WHERE f.movie_id IN ({ph}) ORDER BY c.name ASC",
+        movie_ids)
+    return _group_rows(rows, "movie_id")
 
 
 def scanMovies(db, search):
@@ -1016,20 +996,7 @@ def get_tvshow_attachments(db, tvshow_id, att_type=None):
 
 
 def get_tvshow_attachments_bulk(db, tvshow_ids, att_type=None):
-    if not tvshow_ids:
-        return {}
-    ph = ",".join("?" * len(tvshow_ids))
-    sql = f"SELECT id, type, data, ref_id FROM attachments WHERE ref_id IN ({ph})"
-    params = list(tvshow_ids)
-    if att_type:
-        sql += " AND type = ?"
-        params.append(att_type)
-    cur = db.cursor()
-    cur.execute(sql, params)
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["ref_id"], []).append(row)
-    return result
+    return _get_attachments_bulk(db, tvshow_ids, att_type)
 
 
 def getTVShows(db, where=None, orderby=None, limit=None, params=None):
@@ -1053,116 +1020,85 @@ def getTVShows(db, where=None, orderby=None, limit=None, params=None):
 def getTVSeasons_bulk(db, show_ids):
     if not show_ids:
         return {}
-    ph = ",".join("?" * len(show_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT * FROM seasons WHERE tvshow_id IN ({ph}) ORDER BY tvshow_id, season_number",
-        list(show_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["tvshow_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT * FROM seasons WHERE tvshow_id IN ({ph}) ORDER BY tvshow_id, season_number",
+        show_ids)
+    return _group_rows(rows, "tvshow_id")
 
 
 def getEpisodes_bulk(db, show_ids):
     if not show_ids:
         return {}
-    ph = ",".join("?" * len(show_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT * FROM episodes WHERE tvshow_id IN ({ph}) ORDER BY tvshow_id, season_number, episode_number",
-        list(show_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["tvshow_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT * FROM episodes WHERE tvshow_id IN ({ph}) ORDER BY tvshow_id, season_number, episode_number",
+        show_ids)
+    return _group_rows(rows, "tvshow_id")
 
 
 def getEpisodeFiles_bulk(db, show_ids):
     if not show_ids:
         return {}
-    ph = ",".join("?" * len(show_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT f.*, e.tvshow_id FROM files f "
-        f"JOIN episodes e ON f.episode_id = e.id "
-        f"WHERE e.tvshow_id IN ({ph})",
-        list(show_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["episode_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT f.*, e.tvshow_id FROM files f "
+        "JOIN episodes e ON f.episode_id = e.id "
+        "WHERE e.tvshow_id IN ({ph})",
+        show_ids)
+    return _group_rows(rows, "episode_id")
 
 
 def getUnmatchedEpisodeFiles_bulk(db, show_ids):
     if not show_ids:
         return {}
-    ph = ",".join("?" * len(show_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT f.* FROM files f "
-        f"WHERE f.tvshow_id IN ({ph}) AND f.episode_id IS NULL AND f.libtype = 'tvshows' "
-        f"ORDER BY f.tvshow_id, f.filename",
-        list(show_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["tvshow_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT f.* FROM files f "
+        "WHERE f.tvshow_id IN ({ph}) AND f.episode_id IS NULL AND f.libtype = 'tvshows' "
+        "ORDER BY f.tvshow_id, f.filename",
+        show_ids)
+    return _group_rows(rows, "tvshow_id")
 
 
 def getTVCast_bulk(db, show_ids):
     if not show_ids:
         return {}
-    ph = ",".join("?" * len(show_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT a.*, ats.s_id FROM actors a "
-        f"JOIN actors_tvshows ats ON ats.a_id = a.id "
-        f"WHERE ats.s_id IN ({ph}) "
-        f"ORDER BY a.popularity DESC",
-        list(show_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["s_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT a.*, ats.s_id FROM actors a "
+        "JOIN actors_tvshows ats ON ats.a_id = a.id "
+        "WHERE ats.s_id IN ({ph}) "
+        "ORDER BY a.popularity DESC",
+        show_ids)
+    return _group_rows(rows, "s_id")
 
 
 def getTVCrew_bulk(db, show_ids):
     if not show_ids:
         return {}
-    ph = ",".join("?" * len(show_ids))
-    cur = db.cursor()
-    cur.execute(
-        f"SELECT a.*, cts.s_id, cts.job FROM actors a "
-        f"JOIN crew_tvshows cts ON cts.a_id = a.id "
-        f"WHERE cts.s_id IN ({ph}) "
-        f"ORDER BY a.popularity DESC",
-        list(show_ids))
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["s_id"], []).append(row)
-    return result
+    rows = _fetch_in_chunks(
+        db,
+        "SELECT a.*, cts.s_id, cts.job FROM actors a "
+        "JOIN crew_tvshows cts ON cts.a_id = a.id "
+        "WHERE cts.s_id IN ({ph}) "
+        "ORDER BY a.popularity DESC",
+        show_ids)
+    return _group_rows(rows, "s_id")
 
 
 def getTVShowsByActor_bulk(db, actor_ids):
     if not actor_ids:
         return {}
-    ph = ",".join("?" * len(actor_ids))
-    params = list(actor_ids)
     sql = (
-        f"SELECT s.id, s.oid, s.title, s.title_normalized, s.score, s.year, ats.a_id "
-        f"FROM actors_tvshows ats JOIN tvshows s ON ats.s_id = s.id WHERE ats.a_id IN ({ph}) "
-        f"UNION "
-        f"SELECT s.id, s.oid, s.title, s.title_normalized, s.score, s.year, cts.a_id "
-        f"FROM crew_tvshows cts JOIN tvshows s ON cts.s_id = s.id WHERE cts.a_id IN ({ph}) "
-        f"ORDER BY s.title_normalized COLLATE NOCASE ASC, s.year ASC"
+        "SELECT s.id, s.oid, s.title, s.title_normalized, s.score, s.year, ats.a_id "
+        "FROM actors_tvshows ats JOIN tvshows s ON ats.s_id = s.id WHERE ats.a_id IN ({ph}) "
+        "UNION "
+        "SELECT s.id, s.oid, s.title, s.title_normalized, s.score, s.year, cts.a_id "
+        "FROM crew_tvshows cts JOIN tvshows s ON cts.s_id = s.id WHERE cts.a_id IN ({ph}) "
+        "ORDER BY s.title_normalized COLLATE NOCASE ASC, s.year ASC"
     )
-    cur = db.cursor()
-    cur.execute(sql, params + params)
-    result = {}
-    for row in cur.fetchall():
-        result.setdefault(row["a_id"], []).append(row)
-    return result
+    return _group_rows(_fetch_in_chunks(db, sql, actor_ids, repeat=2), "a_id")
 
 
 def scanTVShows(db, search, tv):
