@@ -10,7 +10,7 @@ jobs:
     name: Build & Lint (trixie)
     runs-on: ubuntu-latest
     container:
-      image: python:3-slim-trixie
+      image: python:3.13-slim-trixie
     steps:
       - name: Install git
         run: apt-get update -qq && apt-get install -y --no-install-recommends git
@@ -26,7 +26,7 @@ jobs:
         run: apt-get install -y --no-install-recommends binutils zlib1g-dev libjpeg-dev
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+        run: pip install -e ".[dev]"
 
       - name: Lint — pylint
         run: pylint --errors-only --disable import-error src/tvthekidx/*.py
@@ -36,7 +36,6 @@ jobs:
 
       - name: Build binary
         run: |
-          pip install -e .
           pyinstaller --clean tvthekidx.spec
           mv dist/tvthekidx dist/tvthekidx-trixie
 

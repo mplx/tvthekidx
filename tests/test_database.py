@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from tvthekidx import migration
@@ -10,6 +12,8 @@ from tvthekidx.database import (
     add_actor_attachment, get_actor_attachments,
     addGenreToDb, addGenreToMovieDb, getGenres_bulk,
     getCast, cleanup_db,
+    getCast_bulk, getMoviesByActor_bulk, getTVShowsByActor_bulk,
+    get_actor_attachments_bulk,
     create_or_get_collection,
 )
 
@@ -239,3 +243,65 @@ class TestGenres:
         rows = getGenres_bulk(db, [mid1, mid2])
         assert rows[mid1][0]["name"] == "Action"
         assert rows[mid2][0]["name"] == "Drama"
+
+
+class TestBulkChunking:
+    """Bulk queries must not exceed SQLite's bound-parameter limit (999 on old builds)."""
+
+    N = 3000
+
+    @pytest.fixture
+    def big_db(self, tmp_path):
+        # Minimal schema so the test only exercises the bulk queries, not migrations.
+        db = sqlite3.connect(str(tmp_path / "bulk.db"))
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+            CREATE TABLE movies (id INTEGER PRIMARY KEY, oid TEXT, title TEXT,
+                                 title_normalized TEXT, score REAL, year INTEGER);
+            CREATE TABLE tvshows (id INTEGER PRIMARY KEY, oid TEXT, title TEXT,
+                                  title_normalized TEXT, score REAL, year INTEGER);
+            CREATE TABLE actors (id INTEGER PRIMARY KEY, name TEXT, popularity REAL);
+            CREATE TABLE actors_movies (a_id INTEGER, m_id INTEGER);
+            CREATE TABLE crew_movies (a_id INTEGER, m_id INTEGER, job TEXT);
+            CREATE TABLE actors_tvshows (a_id INTEGER, s_id INTEGER);
+            CREATE TABLE crew_tvshows (a_id INTEGER, s_id INTEGER, job TEXT);
+            CREATE TABLE attachments (id INTEGER PRIMARY KEY, type TEXT, data BLOB, ref_id INTEGER);
+            INSERT INTO movies VALUES (1, 'm1', 'Test Movie', 'test movie', 75.0, 2023);
+        """)
+        mid = 1
+        # One movie with N actors as cast and the first half also as crew.
+        db.executemany("INSERT INTO actors(id, name, popularity) VALUES (?, ?, ?)",
+                       [(i, f"Actor {i}", float(i)) for i in range(1, self.N + 1)])
+        db.executemany("INSERT INTO actors_movies(a_id, m_id) VALUES (?, ?)",
+                       [(i, mid) for i in range(1, self.N + 1)])
+        db.executemany("INSERT INTO crew_movies(a_id, m_id, job) VALUES (?, ?, 'Director')",
+                       [(i, mid) for i in range(1, self.N // 2 + 1)])
+        db.executemany("INSERT INTO attachments(type, data, ref_id) VALUES ('profile', ?, ?)",
+                       [(b"x", i) for i in range(1, self.N + 1)])
+        db.commit()
+        if hasattr(db, "setlimit"):  # Python 3.11+: emulate an old SQLite build
+            db.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+        yield db, mid
+        db.close()
+
+    def test_movies_by_actor_bulk(self, big_db):
+        db, mid = big_db
+        result = getMoviesByActor_bulk(db, range(1, self.N + 1))
+        assert len(result) == self.N
+        assert all([r["id"] for r in rows] == [mid] for rows in result.values())
+
+    def test_actor_attachments_bulk(self, big_db):
+        db, _ = big_db
+        result = get_actor_attachments_bulk(db, range(1, self.N + 1), "profile")
+        assert len(result) == self.N
+
+    def test_tvshows_by_actor_bulk(self, big_db):
+        db, _ = big_db
+        assert getTVShowsByActor_bulk(db, range(1, self.N + 1)) == {}
+
+    def test_cast_bulk_limit_and_order_survive_chunking(self, big_db):
+        db, mid = big_db
+        ids = [mid] + list(range(10000, 10000 + self.N))  # unknown ids force many chunks
+        result = getCast_bulk(db, ids, limit=5)
+        pops = [r["popularity"] for r in result[mid]]
+        assert pops == [3000.0, 2999.0, 2998.0, 2997.0, 2996.0]
