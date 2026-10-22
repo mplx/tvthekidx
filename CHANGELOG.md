@@ -23,6 +23,10 @@
 - File discovery via regex — `scanDir` now enumerates files by extension only and applies the collection's movie regex as the filter, replacing the year-anchored glob pre-filter; the regex is the single source of truth for both discovery and title/year extraction
 
 ### Changed
+- Screenshots and video probing call `ffmpeg`/`ffprobe` directly; `moviepy` and `ffmpeg-python` dependencies removed, `pillow` no longer capped below 12
+- TMDB requests and poster downloads time out after 30 s instead of blocking forever on a stalled connection
+- Bulk database queries are split into chunks, fixing "too many SQL variables" on large libraries
+- MKV files now get their duration from the container (MKV video streams carry none), so they are no longer re-probed on every scan
 - Database schema v11 — `tvshows`, `seasons`, `episodes`, `actors_tvshows`, `crew_tvshows`, `tvshows_genres` tables added; `files.episode_id` column added
 - Database schema v10 — `collections` table introduced; `files.collection` TEXT column migrated to `files.collection_id` INTEGER FK; unique index rebuilt on `(collection_id, filename, relpath)`
 

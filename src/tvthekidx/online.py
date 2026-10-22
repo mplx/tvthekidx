@@ -14,9 +14,27 @@ from tmdbv3api import TV
 
 from urllib.request import urlopen
 
+import requests
+
+# Seconds before a stalled TMDB request is aborted; without it a dropped
+# connection blocks the indexer forever.
+HTTP_TIMEOUT = 30
+
+
+class _TimeoutSession(requests.Session):
+    """requests session with a default timeout; tmdbv3api never passes one."""
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", HTTP_TIMEOUT)
+        return super().request(*args, **kwargs)
+
 
 def initialize_tmdb(apikey, language="de"):
-    tmdb = TMDb()
+    # The session is shared by all tmdbv3api objects created afterwards. The
+    # response cache is disabled because it bypasses the session (and with it the
+    # timeout) and keeps every response in memory for the whole run.
+    tmdb = TMDb(session=_TimeoutSession())
+    tmdb.cache = False
     tmdb.api_key = apikey
 
     tmdb.language = language
@@ -34,7 +52,7 @@ def fetchPoster(posterPath):
     baseurl = 'https://image.tmdb.org/t/p/w154'
     if posterPath:
         url = baseurl + posterPath
-        poster = urlopen(url).read()
+        poster = urlopen(url, timeout=HTTP_TIMEOUT).read()
         return poster
     else:
         return None
