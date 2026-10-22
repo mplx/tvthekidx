@@ -18,7 +18,7 @@ VERBOSITY_LEVEL: int = 1
 
 def verbose(text: str, level: int = 1):
     if VERBOSITY_LEVEL >= level:
-        print(f"[{level}] {text}")
+        print(f"[{level}] {text}", flush=True)  # unbuffered when piped (wrappers, tee)
 
 
 def setVerbosity(level: int = 1):
